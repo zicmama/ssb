@@ -11,7 +11,7 @@ import (
 type FeedSet interface {
 	AddB([]byte) error
 	AddRef(*ssb.FeedRef) error
-	AddAddr(librarian.Addr) error
+	AddAddr(...librarian.Addr) error
 
 	List() ([]*ssb.FeedRef, error)
 	Has(*ssb.FeedRef) bool
@@ -45,17 +45,19 @@ func (fs *feedSet) AddB(b []byte) error {
 	return nil
 }
 
-func (fs *feedSet) AddAddr(addr librarian.Addr) error {
+func (fs *feedSet) AddAddr(addrs ...librarian.Addr) error {
 	fs.Lock()
 	defer fs.Unlock()
-	if n := len(addr); n != 32 {
-		return ssb.NewFeedRefLenError(n)
+	for _, addr := range addrs {
+		if n := len(addr); n != 32 {
+			return ssb.NewFeedRefLenError(n)
+		}
+		k, err := copyKeyBytes([]byte(addr))
+		if err != nil {
+			return err
+		}
+		fs.set[k] = struct{}{}
 	}
-	k, err := copyKeyBytes([]byte(addr))
-	if err != nil {
-		return err
-	}
-	fs.set[k] = struct{}{}
 	return nil
 }
 
