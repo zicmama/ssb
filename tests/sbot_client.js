@@ -11,6 +11,7 @@ const createSbot = require('ssb-server')
   .use(require('ssb-private'))
   .use(require('ssb-friends'))
   .use(require('ssb-blobs'))
+  .use(require('ssb-ebt'))
 
 
 const testName = process.env['TEST_NAME']

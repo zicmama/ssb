@@ -23,6 +23,7 @@ import (
 	"go.cryptoscope.co/ssb/multilogs"
 	"go.cryptoscope.co/ssb/plugins/blobs"
 	"go.cryptoscope.co/ssb/plugins/control"
+	"go.cryptoscope.co/ssb/plugins/ebt"
 	"go.cryptoscope.co/ssb/plugins/gossip"
 	privplug "go.cryptoscope.co/ssb/plugins/private"
 	"go.cryptoscope.co/ssb/plugins/publish"
@@ -244,6 +245,10 @@ func initSbot(s *Sbot) (*Sbot, error) {
 	blobs := blobs.New(kitlog.With(log, "plugin", "blobs"), bs, wm)
 	pmgr.Register(blobs)
 	ctrl.Register(blobs) // TODO: does not need to open a createWants on this one?!
+
+	// fake ebt
+	ebtPlug := ebt.NewPlug(kitlog.With(log, "plugin", "ebt"), id, rootLog, uf, gb)
+	pmgr.Register(ebtPlug)
 
 	// outgoing gossip behavior
 	pmgr.Register(gossip.New(

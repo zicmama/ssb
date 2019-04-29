@@ -87,6 +87,11 @@ func main() {
 	app.Before = initClient
 	app.Commands = []*cli.Command{
 		{
+			Name:   "ebt",
+			Action: tryEbtCmd,
+			// Flags:  streamFlags,
+		},
+		{
 			Name:   "log",
 			Action: logStreamCmd,
 			Flags:  streamFlags,
@@ -203,7 +208,9 @@ CAVEAT: only one argument...
 	if err := app.Run(os.Args); err != nil {
 		log.Log("runErr", err)
 	}
-	log.Log("pkrClose", pkr.Close())
+	if pkr != nil {
+		log.Log("pkrClose", pkr.Close())
+	}
 }
 
 func todo(ctx *cli.Context) error {
@@ -288,6 +295,52 @@ func (h noopHandler) HandleConnect(ctx context.Context, edp muxrpc.Endpoint) {
 
 func (h noopHandler) HandleCall(ctx context.Context, req *muxrpc.Request, edp muxrpc.Endpoint) {
 	h.log.Log("event", "onCall", "args", fmt.Sprintf("%v", req.Args), "method", req.Method, "type", req.Type)
+}
+
+func tryEbtCmd(ctx *cli.Context) error {
+
+	var opt = map[string]interface{}{
+		"version": 2,
+	}
+	var msgs map[string]interface{}
+	src, snk, err := client.Duplex(longctx, msgs, muxrpc.Method{"ebt", "replicate"}, opt)
+	log.Log("event", "call replicate", "err", err)
+	if err != nil {
+		return err
+	}
+	go pump(longctx, snk)
+	drain(longctx, src)
+	// snk.Close()
+	// <-longctx.Done()
+	return nil
+}
+
+func pump(ctx context.Context, snk luigi.Sink) {
+	for i := 0; i < 10; i++ {
+		err := snk.Pour(ctx, map[string]interface{}{
+			"@k53z9zrXEsxytIE+38qaApl44ZJS68XvkepQ0fyJLdg=.ed25519": 100 + i,
+			"@vZeAPvi6rMuB0bbGCciXzqJEmORnGt4rojCWVmOYXXU=.ed25519": 0,
+		})
+		log.Log("event", "pump done", "err", err, "i", i)
+		time.Sleep(10 * time.Second)
+	}
+	snk.Close()
+}
+
+func drain(ctx context.Context, src luigi.Source) {
+	snk := luigi.FuncSink(func(ctx context.Context, val interface{}, err error) error {
+		if err != nil {
+			if luigi.IsEOS(err) {
+				return nil
+			}
+			return err
+		}
+		log.Log("event", "drain got")
+		goon.Dump(val)
+		return nil
+	})
+	err := luigi.Pump(ctx, snk, src)
+	log.Log("event", "drain done", "err", err)
 }
 
 func getStreamArgs(ctx *cli.Context) message.CreateHistArgs {

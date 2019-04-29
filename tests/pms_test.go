@@ -99,6 +99,14 @@ func TestPrivMsgsFromGo(t *testing.T) {
 		r.NotNil(newSeq)
 	}
 
+	newSeq, err := publish.Append(map[string]interface{}{
+		"type":      "contact",
+		"contact":   alice.Ref(),
+		"following": true,
+	})
+	r.NoError(err, "failed to publish contact message")
+	r.NotNil(newSeq)
+
 	defer cleanup()
 	<-done
 
@@ -147,6 +155,17 @@ func TestPrivMsgsFromJS(t *testing.T) {
 		run() // triggers connect and after block
 	})
 `, ``)
+
+	publish, err := multilogs.OpenPublishLog(bob.RootLog, bob.UserFeeds, *bob.KeyPair)
+	r.NoError(err)
+	newSeq, err := publish.Append(map[string]interface{}{
+		"type":      "contact",
+		"contact":   alice.Ref(),
+		"following": true,
+	})
+	r.NoError(err, "failed to publish contact message")
+	r.NotNil(newSeq)
+
 	defer cleanup()
 	<-done
 
@@ -158,10 +177,8 @@ func TestPrivMsgsFromJS(t *testing.T) {
 
 	// var lastMsg string
 	for i := 0; i < n; i++ {
-		// only one feed in log - directly the rootlog sequences
 		seqMsg, err := aliceLog.Get(margaret.BaseSeq(i))
 		r.NoError(err)
-		r.Equal(seqMsg, margaret.BaseSeq(i))
 
 		msg, err := bob.RootLog.Get(seqMsg.(margaret.BaseSeq))
 		r.NoError(err)
