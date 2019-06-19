@@ -13,6 +13,7 @@ require (
 	github.com/dgraph-io/badger v2.0.0-rc2+incompatible
 	github.com/dustin/go-humanize v1.0.0
 	github.com/go-kit/kit v0.9.0
+	github.com/gorilla/websocket v1.4.1
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/keks/nocomment v0.0.0-20181007001506-30c6dcb4a472
 	github.com/kylelemons/godebug v1.1.0
