@@ -5,7 +5,7 @@
 package repo
 
 import (
-	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/v2"
 )
 
 func badgerOpts(dbPath string) badger.Options {

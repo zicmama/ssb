@@ -5,7 +5,7 @@ package indexes
 import (
 	"context"
 
-	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/v2"
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 

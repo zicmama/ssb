@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/v2"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"go.cryptoscope.co/librarian"
