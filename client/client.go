@@ -11,7 +11,6 @@ import (
 	"os"
 
 	"go.cryptoscope.co/ssb/blobstore"
-	"go.cryptoscope.co/ssb/plugins/replicate"
 	"go.cryptoscope.co/ssb/plugins/whoami"
 
 	"github.com/agl/ed25519"
@@ -187,7 +186,7 @@ func (c Client) Whoami() (*ssb.FeedRef, error) {
 }
 
 func (c Client) ReplicateUpTo() (luigi.Source, error) {
-	src, err := c.Source(c.rootCtx, replicate.UpToResponse{}, muxrpc.Method{"replicate", "upto"})
+	src, err := c.Source(c.rootCtx, ssb.ReplicateUpToResponse{}, muxrpc.Method{"replicate", "upto"})
 	return src, errors.Wrap(err, "ssbClient: failed to create stream")
 }
 

@@ -44,3 +44,5 @@ require (
 )
 
 replace github.com/keks/persist => github.com/cryptix/keks_persist v0.0.0-20190924155924-a51e5e7eb3e6
+
+replace go.cryptoscope.co/secretstream => /home/cryptix/go/src/go.cryptoscope.co/secretstream/

@@ -3,14 +3,15 @@
 package message
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
 	"go.cryptoscope.co/luigi"
 	"go.cryptoscope.co/margaret"
+	"go.cryptoscope.co/muxrpc/codec"
 	gabbygrove "go.mindeco.de/ssb-gabbygrove"
 
 	"go.cryptoscope.co/ssb"
@@ -50,7 +51,11 @@ type legacyVerify struct {
 func (lv legacyVerify) Verify(v interface{}) (ssb.Message, error) {
 	rmsg, ok := v.(json.RawMessage)
 	if !ok {
-		return nil, errors.Errorf("legacyVerify: expected %T - got %T", rmsg, v)
+		codec, ok := v.(codec.Body)
+		if !ok {
+			return nil, errors.Errorf("legacyVerify: expected %T - got %T", rmsg, v)
+		}
+		rmsg = json.RawMessage(codec)
 	}
 	ref, dmsg, err := legacy.Verify(rmsg, lv.hmacKey)
 	if err != nil {
@@ -115,17 +120,20 @@ type streamDrain struct {
 func (ld *streamDrain) Pour(ctx context.Context, v interface{}) error {
 	next, err := ld.verify.Verify(v)
 	if err != nil {
-		return errors.Wrapf(err, "muxDrain(%s:%d)", ld.who.Ref(), ld.latestSeq.Seq())
+		return errors.Wrapf(err, "muxDrain(%s:%d) verify failed (%T)", ld.who.Ref()[1:5], ld.latestSeq.Seq(), v)
 	}
 
 	err = ValidateNext(ld.latestMsg, next)
 	if err != nil {
+		if err == errSkip {
+			return nil
+		}
 		return err
 	}
 
 	err = ld.storage.Pour(ctx, next)
 	if err != nil {
-		return errors.Wrapf(err, "muxDrain(%s): failed to append message(%s:%d)", ld.who.Ref(), next.Key().Ref(), next.Seq())
+		return errors.Wrapf(err, "muxDrain(%s): failed to append message(%s:%d)", ld.who.Ref()[1:5], next.Key().Ref(), next.Seq())
 	}
 
 	ld.latestSeq = margaret.BaseSeq(next.Seq())
@@ -139,30 +147,52 @@ func (ld streamDrain) Close() error { return ld.storage.Close() }
 // that he previous hash is correct and that the sequence number is increasing correctly
 // TODO: move all the message's publish and drains to it's own package
 func ValidateNext(current, next ssb.Message) error {
-	if current != nil {
-		author := current.Author()
+	nextSeq := next.Seq()
 
+	if current != nil {
+		currSeq := current.Seq()
+		author := current.Author()
 		if !author.Equal(next.Author()) {
-			return errors.Errorf("ValidateNext(%s:%d): wrong author: %s", author.Ref(), current.Seq(), next.Author().Ref())
+			return errors.Errorf("ValidateNext(%s:%d): wrong author: %s", author.Ref()[1:5], currSeq, next.Author().Ref())
 		}
 
-		if bytes.Compare(current.Key().Hash, next.Previous().Hash) != 0 {
+		currKey := current.Key()
+		if currKey == nil {
+			panic("no current key!")
+		}
+		shouldSkip := currSeq >= nextSeq
+
+		nextPrev := next.Previous()
+		if nextPrev == nil {
+			if shouldSkip {
+				return errSkip
+			}
+			panic(fmt.Sprintf("skipped %d %d %v", currSeq, nextSeq, shouldSkip))
+		}
+
+		if currSeq+1 != nextSeq {
+			if shouldSkip {
+				return errSkip
+			}
+			return errors.Errorf("ValidateNext(%s:%d): next.seq(%d) != curr.seq+1", author.Ref()[1:5], currSeq, nextSeq)
+		}
+
+		if !currKey.Equal(*nextPrev) {
 			return errors.Errorf("ValidateNext(%s:%d): previous compare failed expected:%s incoming:%s",
 				author.Ref(),
-				current.Seq(),
+				currSeq,
 				current.Key().Ref(),
 				next.Previous().Ref(),
 			)
 		}
-		if current.Seq()+1 != next.Seq() {
-			return errors.Errorf("ValidateNext(%s:%d): next.seq != curr.seq+1", author.Ref(), current.Seq())
-		}
 
 	} else { // first message
-		if next.Seq() != 1 {
-			return errors.Errorf("ValidateNext(%s:%d): first message has to have sequence 1", next.Author().Ref(), next.Seq())
+		if nextSeq != 1 {
+			return errors.Errorf("ValidateNext(%s:%d): first message has to have sequence 1", next.Author().Ref()[1:5], nextSeq)
 		}
 	}
 
 	return nil
 }
+
+var errSkip = errors.New("ValidateNext: already got message")

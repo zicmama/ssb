@@ -40,7 +40,7 @@ func (h *handler) fetchAll(
 	if err != nil {
 		return err
 	}
-	tGraph, err := h.GraphBuilder.Build()
+	tGraph, err := h.graphBuilder.Build()
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,8 @@ func (h *handler) fetchAll(
 	fetchGroup, ctx := errgroup.WithContext(ctx)
 	work := make(chan *ssb.FeedRef)
 
-	n := 1 + (len(lst) / 10)
+	n := len(lst)
+	// n := 1 + (len(lst) / 10)
 	const maxWorker = 50
 	if n > maxWorker { // n = max(n,maxWorker)
 		n = maxWorker
@@ -59,7 +60,7 @@ func (h *handler) fetchAll(
 	}
 
 	for _, r := range lst {
-		if tGraph.Blocks(h.Id, r) {
+		if tGraph.Blocks(h.self, r) {
 			continue
 		}
 		select {
@@ -72,9 +73,9 @@ func (h *handler) fetchAll(
 		}
 	}
 	close(work)
-	level.Debug(h.Info).Log("event", "feed fetch workers filled", "n", n)
+	// level.Debug(h.Info).Log("event", "feed fetch workers filled", "n", n)
 	err = fetchGroup.Wait()
-	level.Debug(h.Info).Log("event", "workers done", "err", err)
+	// level.Debug(h.Info).Log("event", "workers done", "err", err)
 	return err
 }
 
@@ -87,7 +88,7 @@ func (h *handler) makeWorker(work <-chan *ssb.FeedRef, ctx context.Context, edp 
 				return err
 			} else if err != nil {
 				// just logging the error assuming forked feed for instance
-				level.Warn(h.Info).Log("event", "skipped updating of stored feed", "err", err, "fr", ref.Ref()[1:5])
+				level.Warn(h.logger).Log("event", "skipped updating of stored feed", "err", err, "fr", ref.Ref()[1:5])
 			}
 		}
 		return nil
@@ -120,7 +121,7 @@ func (g *handler) fetchFeed(
 	g.activeLock.Lock()
 	_, ok := g.activeFetch.Load(addr)
 	if ok {
-		// errors.Errorf("fetchFeed: crawl of %x active", addr[:5])
+		level.Warn(g.logger).Log("fetchFeed", "crawl active", "addr", fr.Ref()[1:5])
 		g.activeLock.Unlock()
 		return nil
 	}
@@ -137,7 +138,7 @@ func (g *handler) fetchFeed(
 			g.sysGauge.With("part", "fetches").Add(-1)
 		}
 	}()
-	userLog, err := g.UserFeeds.Get(addr)
+	userLog, err := g.feedIndex.Get(addr)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open sublog for user")
 	}
@@ -159,7 +160,7 @@ func (g *handler) fetchFeed(
 			if err != nil {
 				return errors.Wrapf(err, "failed to look up root seq for latest user sublog")
 			}
-			msgV, err := g.RootLog.Get(rootLogValue.(margaret.Seq))
+			msgV, err := g.receiveLog.Get(rootLogValue.(margaret.Seq))
 			if err != nil {
 				return errors.Wrapf(err, "failed retreive stored message")
 			}
@@ -178,13 +179,16 @@ func (g *handler) fetchFeed(
 	}
 
 	startSeq := latestSeq
-	info := log.With(g.Info, "event", "gossiprx", "fr", fr.Ref()[1:5], "latest", startSeq) // , "me", g.Id.Ref()[1:5])
+	info := log.With(g.logger, "event", "gossiprx",
+		"fr", fr.Ref()[1:5],
+		"latest", startSeq) // , "me", g.Id.Ref()[1:5])
 
 	var q = message.CreateHistArgs{
 		ID:         fr,
 		Seq:        int64(latestSeq + 1),
 		StreamArgs: message.StreamArgs{Limit: -1},
 	}
+	q.Live = true
 
 	toLong, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer func() {
@@ -209,7 +213,9 @@ func (g *handler) fetchFeed(
 			}
 			return err
 		}
-		_, err = g.RootLog.Append(val)
+		seq, err := g.receiveLog.Append(val)
+		msg := val.(ssb.Message)
+		level.Warn(info).Log("receivedAsSeq", seq.Seq(), "ref", msg.Key().Ref())
 		return errors.Wrap(err, "failed to append verified message to rootLog")
 	})
 
@@ -234,7 +240,8 @@ func (g *handler) fetchFeed(
 		return val, nil
 	})
 
-	// info.Log("starting", "fetch")
+	// level.Warn(info).Log("starting", "fetch")
 	err = luigi.Pump(toLong, snk, src)
+	// level.Warn(info).Log("done", "fetch", "lastSeq", latestSeq)
 	return errors.Wrap(err, "gossip pump failed")
 }

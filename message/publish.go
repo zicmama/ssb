@@ -118,7 +118,7 @@ func (pl *publishLog) Append(val interface{}) (margaret.Seq, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to append new msg")
 	}
-
+	fmt.Println( rlSeq.Seq(), nextMsg.Key().Ref())
 	return rlSeq, nil
 }
 
