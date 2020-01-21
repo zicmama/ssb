@@ -18,6 +18,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"go.cryptoscope.co/ssb"
+	"go.cryptoscope.co/ssb/network"
 	"go.cryptoscope.co/ssb/internal/testutils"
 )
 
@@ -31,6 +32,7 @@ func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
 		WithInfo(log.With(mainLog, "bot", name)),
 		WithRepoPath(testPath),
 		WithListenAddr(":0"),
+		WithNetworkConnTracker(network.NewLastWinsTracker()),
 	)
 
 	theBot, err := New(botOptions...)

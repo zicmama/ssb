@@ -249,6 +249,8 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 	}
 	var edp muxrpc.Endpoint
 
+	fmt.Println("wrapped and accepted", conn.RemoteAddr().String())
+
 	ctx, cancel := ctxutils.WithError(ctx, fmt.Errorf("handle conn returned"))
 
 	defer func() {
@@ -268,7 +270,7 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 
 	h, err := n.opts.MakeHandler(conn)
 	if err != nil {
-		// n.log.Log("conn", "mkHandler", "err", err, "peer", conn.RemoteAddr())
+		n.log.Log("conn", "mkHandler", "err", err, "peer", conn.RemoteAddr())
 		if _, ok := errors.Cause(err).(*ssb.ErrOutOfReach); ok {
 			return // ignore silently
 		}
@@ -420,6 +422,7 @@ func (n *node) Connect(ctx context.Context, addr net.Addr) error {
 		}
 		return errors.Wrap(err, "node/connect: error dialing")
 	}
+fmt.Println("dialed", addr.String())
 
 	go func(c net.Conn) {
 		n.handleConnection(ctx, c)

@@ -18,7 +18,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	
 	"go.cryptoscope.co/ssb"
-	"go.cryptoscope.co/ssb/network"
+	// "go.cryptoscope.co/ssb/network"
 	"go.cryptoscope.co/ssb/internal/testutils"
 )
 
@@ -185,8 +185,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 		WithAppKey(appKey),
 		WithHMACSigning(hmacKey),
 		WithInfo(info),
-		WithHops(2),
-		WithNetworkConnTracker(network.NewLastWinsTracker()),
+		WithHops(3),
 	}
 
 	theBots := []*Sbot{}
@@ -229,21 +228,21 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 	}
 
 	// initial sync
-	initialSyncCtx, initialSync := context.WithCancel(ctx)
+	// initialSyncCtx, initialSync := context.WithCancel(ctx)
 	for z := 8; z >= 0; z-- {
-		// connectCtx, firstSync := context.WithCancel(initialSyncCtx)
+		connectCtx, firstSync := context.WithCancel(ctx)
 
 		for n := 5; n >= 0; n-- {
 			for i := 0; i < 6; i++ {
 				if i == n {
 					continue
 				}
-				err := theBots[n].Network.Connect(initialSyncCtx, theBots[i].Network.GetListenAddr())
+				err := theBots[n].Network.Connect(connectCtx, theBots[i].Network.GetListenAddr())
 				r.NoError(err)
 			}
 		}
 		t.Log(z, "connect..")
-		time.Sleep(3 * time.Second)
+		time.Sleep(2 * time.Second)
 		for i, bot := range theBots {
 			st, err := bot.Status()
 			r.NoError(err)
@@ -251,10 +250,10 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 				t.Log(i,": seq", rootSeq)
 			}
 		}
-		// firstSync()
+		firstSync()
 	}
 
-	initialSync()
+	// initialSync()
 	for i, bot := range theBots {
 		st, err := bot.Status()
 		r.NoError(err)
@@ -263,9 +262,9 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 
 	// setup connections
 	connectMatrix := []int{
-		0, 1, 1, 0, 0, 0,
-		0, 0, 1, 1, 1, 0,
-		0, 0, 0, 1, 1, 0,
+		0, 1, 0, 0, 0, 0,
+		0, 0, 1, 0, 1, 0,
+		0, 0, 0, 1, 0, 0,
 		0, 0, 0, 0, 0, 1,
 		0, 0, 0, 0, 0, 1,
 		0, 0, 0, 0, 0, 0,
