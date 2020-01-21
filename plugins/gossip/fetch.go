@@ -49,7 +49,8 @@ func (h *handler) fetchAll(
 	fetchGroup, ctx := errgroup.WithContext(ctx)
 	work := make(chan *ssb.FeedRef)
 
-	n := 1 + (len(lst) / 10)
+	n := len(lst)
+	// n := 1 + (len(lst) / 10)
 	const maxWorker = 50
 	if n > maxWorker { // n = max(n,maxWorker)
 		n = maxWorker
@@ -72,9 +73,9 @@ func (h *handler) fetchAll(
 		}
 	}
 	close(work)
-	level.Debug(h.Info).Log("event", "feed fetch workers filled", "n", n)
+	// level.Debug(h.Info).Log("event", "feed fetch workers filled", "n", n)
 	err = fetchGroup.Wait()
-	level.Debug(h.Info).Log("event", "workers done", "err", err)
+	// level.Debug(h.Info).Log("event", "workers done", "err", err)
 	return err
 }
 
@@ -120,7 +121,7 @@ func (g *handler) fetchFeed(
 	g.activeLock.Lock()
 	_, ok := g.activeFetch.Load(addr)
 	if ok {
-		// errors.Errorf("fetchFeed: crawl of %x active", addr[:5])
+		level.Warn(g.Info).Log("fetchFeed", "crawl active", "addr", fr.Ref()[1:5])
 		g.activeLock.Unlock()
 		return nil
 	}
@@ -178,7 +179,9 @@ func (g *handler) fetchFeed(
 	}
 
 	startSeq := latestSeq
-	info := log.With(g.Info, "event", "gossiprx", "fr", fr.Ref()[1:5], "latest", startSeq) // , "me", g.Id.Ref()[1:5])
+	info := log.With(g.Info, "event", "gossiprx",
+		"fr", fr.Ref()[1:5],
+		"latest", startSeq) // , "me", g.Id.Ref()[1:5])
 
 	var q = message.CreateHistArgs{
 		ID:         fr,
@@ -210,7 +213,9 @@ func (g *handler) fetchFeed(
 			}
 			return err
 		}
-		_, err = g.RootLog.Append(val)
+		seq, err := g.RootLog.Append(val)
+		msg := val.(ssb.Message)
+		level.Warn(info).Log("receivedAsSeq", seq.Seq(), "ref", msg.Key().Ref())
 		return errors.Wrap(err, "failed to append verified message to rootLog")
 	})
 
@@ -235,7 +240,8 @@ func (g *handler) fetchFeed(
 		return val, nil
 	})
 
-	// info.Log("starting", "fetch")
+	// level.Warn(info).Log("starting", "fetch")
 	err = luigi.Pump(toLong, snk, src)
+	// level.Warn(info).Log("done", "fetch", "lastSeq", latestSeq)
 	return errors.Wrap(err, "gossip pump failed")
 }

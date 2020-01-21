@@ -192,7 +192,6 @@ func (wmgr *wantManager) promEvent(name string, n float64) {
 		wmgr.evtCtr.With("event", name).Add(n)
 	} else {
 		level.Debug(wmgr.info).Log("evt", name, "add", n)
-
 	}
 }
 
@@ -201,7 +200,7 @@ func (wmgr *wantManager) promGauge(name string, n float64) {
 	if wmgr.gauge != nil {
 		wmgr.gauge.With("part", name).Add(n)
 	} else {
-		level.Debug(wmgr.info).Log("gauge", name, "add", n)
+		// level.Debug(wmgr.info).Log("gauge", name, "add", n)
 	}
 }
 func (wmgr *wantManager) promGaugeSet(name string, n int) {
@@ -209,7 +208,7 @@ func (wmgr *wantManager) promGaugeSet(name string, n int) {
 	if wmgr.gauge != nil {
 		wmgr.gauge.With("part", name).Set(float64(n))
 	} else {
-		level.Debug(wmgr.info).Log("gauge", name, "set", n)
+		// level.Debug(wmgr.info).Log("gauge", name, "set", n)
 	}
 }
 

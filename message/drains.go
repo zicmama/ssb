@@ -145,17 +145,24 @@ func ValidateNext(current, next ssb.Message) error {
 		if !author.Equal(next.Author()) {
 			return errors.Errorf("ValidateNext(%s:%d): wrong author: %s", author.Ref(), current.Seq(), next.Author().Ref())
 		}
-
-		if bytes.Compare(current.Key().Hash, next.Previous().Hash) != 0 {
+		if current.Seq()+1 != next.Seq() {
+			return errors.Errorf("ValidateNext(%s:%d): next.seq != curr.seq+1", author.Ref(), current.Seq())
+		}
+		currKey := current.Key()
+		if currKey == nil {
+			panic("no current key!")
+		}
+		nextPrev := next.Previous()
+		if nextPrev == nil {
+			panic("no prev on next!")
+		}
+		if bytes.Compare(currKey.Hash, nextPrev.Hash) != 0 {
 			return errors.Errorf("ValidateNext(%s:%d): previous compare failed expected:%s incoming:%s",
 				author.Ref(),
 				current.Seq(),
 				current.Key().Ref(),
 				next.Previous().Ref(),
 			)
-		}
-		if current.Seq()+1 != next.Seq() {
-			return errors.Errorf("ValidateNext(%s:%d): next.seq != curr.seq+1", author.Ref(), current.Seq())
 		}
 
 	} else { // first message

@@ -4,8 +4,8 @@ package gossip
 
 import (
 	"context"
-	"sync"
 	"time"
+	"sync"
 
 	"github.com/cryptix/go/logging"
 	"github.com/go-kit/kit/log"
@@ -55,7 +55,7 @@ func (g *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 	}
 
 	info := log.With(g.Info, "remote", remoteRef.Ref()[1:5], "event", "gossiprx")
-	start := time.Now()
+	// start := time.Now()
 
 	if g.promisc {
 		hasCallee, err := multilog.Has(g.UserFeeds, remoteRef.StoredAddr())
@@ -92,7 +92,7 @@ func (g *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 			level.Error(info).Log("msg", "hops failed", "err", err)
 		}
 	}
-	level.Debug(info).Log("msg", "hops fetch done", "count", hops.Count(), "took", time.Since(start))
+	// level.Debug(info).Log("msg", "hops fetch done", "count", hops.Count(), "took", time.Since(start))
 }
 
 func (g *handler) HandleCall(
