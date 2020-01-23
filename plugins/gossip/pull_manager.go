@@ -4,6 +4,7 @@ package gossip
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -33,7 +34,7 @@ type pullManager struct {
 	feedIndex multilog.MultiLog
 
 	receiveLog margaret.Log
-	// append     luigi.Sink
+	append     luigi.Sink
 
 	currentFeedState map[string]current
 
@@ -44,18 +45,25 @@ type pullManager struct {
 }
 
 type rxSink struct {
+	mu     sync.Mutex
 	logger log.Logger
 	append margaret.Log
 }
 
-func (snk rxSink) Pour(ctx context.Context, val interface{}) error {
+func (snk *rxSink) Pour(ctx context.Context, val interface{}) error {
+	snk.mu.Lock()
 	seq, err := snk.append.Append(val)
+	if err != nil {
+		snk.mu.Unlock()
+		return errors.Wrap(err, "failed to append verified message to rootLog")
+	}
 	msg := val.(ssb.Message)
 	level.Warn(snk.logger).Log("receivedAsSeq", seq.Seq(), "ref", msg.Key().Ref())
-	return errors.Wrap(err, "failed to append verified message to rootLog")
+	snk.mu.Unlock()
+	return nil
 }
 
-func (snk rxSink) Close() error { return nil }
+func (snk *rxSink) Close() error { return nil }
 
 func (pull pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) {
 
@@ -89,7 +97,7 @@ func (pull pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) {
 		q.Live = true
 
 		// TODO: map of verify sinks for skipping!?
-		snk := message.NewVerifySink(ref, latestSeq, latestMsg, rxSink{pull.logger, pull.receiveLog}, pull.hmacKey)
+		snk := message.NewVerifySink(ref, latestSeq, latestMsg, pull.append, pull.hmacKey)
 
 		storeSnk := luigi.FuncSink(func(ctx context.Context, val interface{}, err error) error {
 			if err != nil {
@@ -127,7 +135,7 @@ func (pull pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) {
 			// 	fmt.Println("verify pour failed:", err)
 			// 	return err
 			// }
-			return nil
+			// return nil
 		})
 
 		err = edp.SunkenSource(ctx, storeSnk, method, q)

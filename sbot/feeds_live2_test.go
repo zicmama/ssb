@@ -19,8 +19,181 @@ import (
 
 	"go.cryptoscope.co/ssb"
 	// "go.cryptoscope.co/ssb/network"
+	"go.cryptoscope.co/ssb/internal/mutil"
 	"go.cryptoscope.co/ssb/internal/testutils"
 )
+
+func TestFeedsLiveNetworkChain(t *testing.T) {
+	r := require.New(t)
+	a := assert.New(t)
+	os.RemoveAll(filepath.Join("testrun", t.Name()))
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	botgroup, ctx := errgroup.WithContext(ctx)
+
+	info := testutils.NewRelativeTimeLogger(nil)
+	bs := newBotServer(ctx, info)
+
+	appKey := make([]byte, 32)
+	rand.Read(appKey)
+	hmacKey := make([]byte, 32)
+	rand.Read(hmacKey)
+
+	netOpts := []Option{
+		WithAppKey(appKey),
+		WithHMACSigning(hmacKey),
+		WithHops(3),
+	}
+
+	theBots := []*Sbot{}
+	n := 4
+	for i := 0; i < n; i++ {
+
+		botN := makeNamedTestBot(t, strconv.Itoa(i), netOpts)
+		botgroup.Go(bs.Serve(botN))
+
+		theBots = append(theBots, botN)
+	}
+
+	followMatrix := []int{
+		0, 1, 1, 1,
+		1, 0, 1, 1,
+		1, 1, 0, 1,
+		1, 1, 1, 0,
+	}
+
+	msgCnt := 0
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			x := i*n + j
+			fQ := followMatrix[x]
+
+			botI := theBots[i]
+			botJ := theBots[j]
+
+			if fQ == 1 {
+				msgCnt++
+				t.Log(i, j, "following")
+				_, err := botI.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
+					Contact: botJ.KeyPair.Id,
+				})
+				r.NoError(err)
+			}
+		}
+	}
+
+	// initialSync
+	for z := 1 + n/2; z >= 0; z-- {
+		// connectCtx, firstSync := context.WithCancel(ctx)
+
+		for m := n - 1; m >= 0; m-- {
+			for i := 0; i < n; i++ {
+				if i == m {
+					continue
+				}
+				err := theBots[m].Network.Connect(ctx, theBots[i].Network.GetListenAddr())
+				r.NoError(err)
+			}
+		}
+		t.Log(z, "connect..")
+		time.Sleep(2 * time.Second)
+		for i, bot := range theBots {
+			st, err := bot.Status()
+			r.NoError(err)
+			if rootSeq := st.Root.Seq(); rootSeq != 21 {
+				t.Log(i, ": seq", rootSeq)
+			}
+		}
+		// firstSync()
+	}
+	for i, bot := range theBots {
+		st, err := bot.Status()
+		r.NoError(err)
+		a.EqualValues(msgCnt-1, st.Root.Seq(), "wrong seq on %d", i)
+		bot.Network.GetConnTracker().CloseAll()
+		g, err := bot.GraphBuilder.Build()
+		r.NoError(err)
+		err = g.RenderSVGToFile(filepath.Join("testrun", t.Name(), fmt.Sprintf("bot%d.svg", i)))
+		r.NoError(err)
+	}
+
+	// dial up a chain
+	for i := 0; i < n-1; i++ {
+		botI := theBots[i]
+		botJ := theBots[i+1]
+
+		err := botI.Network.Connect(ctx, botJ.Network.GetListenAddr())
+		r.NoError(err)
+		time.Sleep(1 * time.Second)
+	}
+
+	// did b0 get feed of bN-1?
+	feedIndexOfBot0, ok := theBots[0].GetMultiLog("userFeeds")
+	r.True(ok)
+	feedOfLastBot, err := feedIndexOfBot0.Get(theBots[n-1].KeyPair.Id.StoredAddr())
+	r.NoError(err)
+	seqv, err := feedOfLastBot.Seq().Value()
+	r.NoError(err)
+	wantSeq := margaret.BaseSeq(2)
+	r.EqualValues(wantSeq, seqv, "after connect check")
+
+	// setup live listener
+	gotMsg := make(chan int64)
+
+	seqSrc, err := mutil.Indirect(theBots[0].RootLog, feedOfLastBot).Query(
+		margaret.Gt(wantSeq),
+		margaret.Live(true))
+	r.NoError(err)
+
+	botgroup.Go(func() error {
+		for {
+			seqV, err := seqSrc.Next(ctx)
+			if err != nil {
+				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
+					break
+				}
+				return err
+			}
+
+			seq, ok := seqV.(ssb.Message)
+			if !ok {
+				return fmt.Errorf("wrong type: %T", seqV)
+			}
+			info.Log("rxFeed", seq.Seq(), "k", seq.Key().Ref())
+			gotMsg <- seq.Seq()
+		}
+		return nil
+	})
+
+	// now publish on C and let them bubble to A, live without reconnect
+	for i := 0; i < 5; i++ {
+		_, err := theBots[n-1].PublishLog.Append(fmt.Sprintf("some test msg:%02d", n))
+		r.NoError(err)
+		// a.EqualValues(margaret.BaseSeq(2+i), rxSeq)
+
+		// msgv, err := theBots[n-1].RootLog.Get(rxSeq)
+		// r.NoError(err)
+		// seq := msgv.(ssb.Message).Seq()
+
+		// received new message?
+		select {
+		case <-time.After(1 * time.Second):
+			t.Errorf("timeout %d....", i)
+		case seq := <-gotMsg:
+			a.EqualValues(margaret.BaseSeq(3+i), seq, "wrong seq")
+		}
+	}
+
+	// cleanup
+	cancel()
+	for _, bot := range theBots {
+		err = bot.FSCK(nil, FSCKModeSequences)
+		a.NoError(err)
+		bot.Shutdown()
+		r.NoError(bot.Close())
+	}
+	r.NoError(botgroup.Wait())
+}
 
 func TestFeedsLiveNetworkStar(t *testing.T) {
 	r := require.New(t)

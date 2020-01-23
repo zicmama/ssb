@@ -69,10 +69,15 @@ func New(
 	)
 
 	h.pull = &pullManager{
-		self:       id,
-		gb:         graphBuilder,
-		feedIndex:  userFeeds,
+		self:      id,
+		gb:        graphBuilder,
+		feedIndex: userFeeds,
+
 		receiveLog: rootLog,
+		append: &rxSink{
+			logger: log,
+			append: rootLog,
+		},
 
 		currentFeedState: make(map[string]current),
 
