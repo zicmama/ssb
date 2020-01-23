@@ -4,6 +4,7 @@ package gossip
 
 import (
 	"context"
+
 	"github.com/pkg/errors"
 	"go.cryptoscope.co/muxrpc"
 
@@ -73,7 +74,7 @@ func (f *multiSink) Close() error {
 }
 
 func (f *multiSink) Pour(
-	ctx context.Context,
+	_ context.Context,
 	msg interface{},
 ) error {
 	if f.isClosed {

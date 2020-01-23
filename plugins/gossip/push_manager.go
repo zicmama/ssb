@@ -23,8 +23,8 @@ import (
 	"go.cryptoscope.co/ssb/message"
 )
 
-// FeedManager handles serving gossip about User Feeds.
-type FeedManager struct {
+// FeedPushManager handles serving feeds via gossip
+type FeedPushManager struct {
 	rootCtx context.Context
 
 	RootLog   margaret.Log
@@ -39,17 +39,17 @@ type FeedManager struct {
 	sysCtr   metrics.Counter
 }
 
-// NewFeedManager returns a new FeedManager used for gossiping about User
+// NewFeedPushManager returns a new FeedPushManager used for gossiping about User
 // Feeds.
-func NewFeedManager(
+func NewFeedPushManager(
 	ctx context.Context,
 	rootLog margaret.Log,
 	userFeeds multilog.MultiLog,
 	info logging.Interface,
 	sysGauge metrics.Gauge,
 	sysCtr metrics.Counter,
-) *FeedManager {
-	fm := &FeedManager{
+) *FeedPushManager {
+	fm := &FeedPushManager{
 		RootLog:   rootLog,
 		UserFeeds: userFeeds,
 		logger:    info,
@@ -63,7 +63,7 @@ func NewFeedManager(
 	return fm
 }
 
-func (m *FeedManager) pour(ctx context.Context, val interface{}, err error) error {
+func (m *FeedPushManager) pour(ctx context.Context, val interface{}, err error) error {
 	m.liveFeedsMut.Lock()
 	defer m.liveFeedsMut.Unlock()
 
@@ -83,7 +83,7 @@ func (m *FeedManager) pour(ctx context.Context, val interface{}, err error) erro
 	return sink.Pour(ctx, val)
 }
 
-func (m *FeedManager) serveLiveFeeds() {
+func (m *FeedPushManager) serveLiveFeeds() {
 	seqv, err := m.RootLog.Seq().Value()
 	if err != nil {
 		err = errors.Wrap(err, "failed to get root log sequence")
@@ -106,7 +106,7 @@ func (m *FeedManager) serveLiveFeeds() {
 	}
 }
 
-func (m *FeedManager) addLiveFeed(
+func (m *FeedPushManager) addLiveFeed(
 	ctx context.Context,
 	sink luigi.Sink,
 	ssbID string,
@@ -193,7 +193,7 @@ func getLatestSeq(log margaret.Log) (int64, error) {
 }
 
 // CreateStreamHistory serves the sink a CreateStreamHistory request to the sink.
-func (m *FeedManager) CreateStreamHistory(
+func (m *FeedPushManager) CreateStreamHistory(
 	ctx context.Context,
 	sink luigi.Sink,
 	arg *message.CreateHistArgs,

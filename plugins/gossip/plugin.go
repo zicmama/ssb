@@ -31,11 +31,11 @@ func New(
 	opts ...interface{},
 ) *plugin {
 	h := &handler{
-		Id:           id,
-		RootLog:      rootLog,
-		UserFeeds:    userFeeds,
-		GraphBuilder: graphBuilder,
-		Info:         log,
+		self:         id,
+		receiveLog:   rootLog,
+		feedIndex:    userFeeds,
+		graphBuilder: graphBuilder,
+		logger:       log,
 		rootCtx:      ctx,
 	}
 
@@ -59,11 +59,11 @@ func New(
 		h.hopCount = 1
 	}
 
-	h.feedManager = NewFeedManager(
+	h.pushManager = NewFeedPushManager(
 		h.rootCtx,
-		h.RootLog,
-		h.UserFeeds,
-		h.Info,
+		h.receiveLog,
+		h.feedIndex,
+		h.logger,
 		h.sysGauge,
 		h.sysCtr,
 	)
@@ -81,11 +81,11 @@ func NewHist(
 	opts ...interface{},
 ) histPlugin {
 	h := &handler{
-		Id:           id,
-		RootLog:      rootLog,
-		UserFeeds:    userFeeds,
-		GraphBuilder: graphBuilder,
-		Info:         log,
+		self:         id,
+		receiveLog:   rootLog,
+		feedIndex:    userFeeds,
+		graphBuilder: graphBuilder,
+		logger:       log,
 		rootCtx:      ctx,
 	}
 
@@ -110,11 +110,11 @@ func NewHist(
 		h.hopCount = 1
 	}
 
-	h.feedManager = NewFeedManager(
+	h.pushManager = NewFeedPushManager(
 		h.rootCtx,
-		h.RootLog,
-		h.UserFeeds,
-		h.Info,
+		h.receiveLog,
+		h.feedIndex,
+		h.logger,
 		h.sysGauge,
 		h.sysCtr,
 	)

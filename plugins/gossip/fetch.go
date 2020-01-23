@@ -40,7 +40,7 @@ func (h *handler) fetchAll(
 	if err != nil {
 		return err
 	}
-	tGraph, err := h.GraphBuilder.Build()
+	tGraph, err := h.graphBuilder.Build()
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (h *handler) fetchAll(
 	}
 
 	for _, r := range lst {
-		if tGraph.Blocks(h.Id, r) {
+		if tGraph.Blocks(h.self, r) {
 			continue
 		}
 		select {
@@ -88,7 +88,7 @@ func (h *handler) makeWorker(work <-chan *ssb.FeedRef, ctx context.Context, edp 
 				return err
 			} else if err != nil {
 				// just logging the error assuming forked feed for instance
-				level.Warn(h.Info).Log("event", "skipped updating of stored feed", "err", err, "fr", ref.Ref()[1:5])
+				level.Warn(h.logger).Log("event", "skipped updating of stored feed", "err", err, "fr", ref.Ref()[1:5])
 			}
 		}
 		return nil
@@ -121,7 +121,7 @@ func (g *handler) fetchFeed(
 	g.activeLock.Lock()
 	_, ok := g.activeFetch.Load(addr)
 	if ok {
-		level.Warn(g.Info).Log("fetchFeed", "crawl active", "addr", fr.Ref()[1:5])
+		level.Warn(g.logger).Log("fetchFeed", "crawl active", "addr", fr.Ref()[1:5])
 		g.activeLock.Unlock()
 		return nil
 	}
@@ -138,7 +138,7 @@ func (g *handler) fetchFeed(
 			g.sysGauge.With("part", "fetches").Add(-1)
 		}
 	}()
-	userLog, err := g.UserFeeds.Get(addr)
+	userLog, err := g.feedIndex.Get(addr)
 	if err != nil {
 		return errors.Wrapf(err, "failed to open sublog for user")
 	}
@@ -160,7 +160,7 @@ func (g *handler) fetchFeed(
 			if err != nil {
 				return errors.Wrapf(err, "failed to look up root seq for latest user sublog")
 			}
-			msgV, err := g.RootLog.Get(rootLogValue.(margaret.Seq))
+			msgV, err := g.receiveLog.Get(rootLogValue.(margaret.Seq))
 			if err != nil {
 				return errors.Wrapf(err, "failed retreive stored message")
 			}
@@ -179,7 +179,7 @@ func (g *handler) fetchFeed(
 	}
 
 	startSeq := latestSeq
-	info := log.With(g.Info, "event", "gossiprx",
+	info := log.With(g.logger, "event", "gossiprx",
 		"fr", fr.Ref()[1:5],
 		"latest", startSeq) // , "me", g.Id.Ref()[1:5])
 
@@ -213,7 +213,7 @@ func (g *handler) fetchFeed(
 			}
 			return err
 		}
-		seq, err := g.RootLog.Append(val)
+		seq, err := g.receiveLog.Append(val)
 		msg := val.(ssb.Message)
 		level.Warn(info).Log("receivedAsSeq", seq.Seq(), "ref", msg.Key().Ref())
 		return errors.Wrap(err, "failed to append verified message to rootLog")

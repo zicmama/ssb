@@ -16,7 +16,7 @@ import (
 	"go.cryptoscope.co/luigi"
 	"go.cryptoscope.co/margaret"
 	"golang.org/x/sync/errgroup"
-	
+
 	"go.cryptoscope.co/ssb"
 	// "go.cryptoscope.co/ssb/network"
 	"go.cryptoscope.co/ssb/internal/testutils"
@@ -230,14 +230,14 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 	// initial sync
 	// initialSyncCtx, initialSync := context.WithCancel(ctx)
 	for z := 8; z >= 0; z-- {
-		connectCtx, firstSync := context.WithCancel(ctx)
+		// connectCtx, firstSync := context.WithCancel(ctx)
 
 		for n := 5; n >= 0; n-- {
 			for i := 0; i < 6; i++ {
 				if i == n {
 					continue
 				}
-				err := theBots[n].Network.Connect(connectCtx, theBots[i].Network.GetListenAddr())
+				err := theBots[n].Network.Connect(ctx, theBots[i].Network.GetListenAddr())
 				r.NoError(err)
 			}
 		}
@@ -246,11 +246,11 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 		for i, bot := range theBots {
 			st, err := bot.Status()
 			r.NoError(err)
-			if rootSeq:=st.Root.Seq(); rootSeq != 21 {
-				t.Log(i,": seq", rootSeq)
+			if rootSeq := st.Root.Seq(); rootSeq != 21 {
+				t.Log(i, ": seq", rootSeq)
 			}
 		}
-		firstSync()
+		// firstSync()
 	}
 
 	// initialSync()
@@ -258,6 +258,11 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 		st, err := bot.Status()
 		r.NoError(err)
 		a.EqualValues(21, st.Root.Seq(), "wrong seq on %d", i)
+		bot.Network.GetConnTracker().CloseAll()
+		// g, err := bot.GraphBuilder.Build()
+		// r.NoError(err)
+		// err = g.RenderSVGToFile(filepath.Join("testrun", t.Name(), fmt.Sprintf("bot%d.svg", i)))
+		// r.NoError(err)
 	}
 
 	// setup connections
@@ -267,7 +272,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 		0, 0, 0, 1, 0, 0,
 		0, 0, 0, 0, 0, 1,
 		0, 0, 0, 0, 0, 1,
-		0, 0, 0, 0, 0, 0,
+		1, 0, 0, 0, 0, 0,
 	}
 
 	for i := 0; i < 6; i++ {
@@ -284,7 +289,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 				err := botI.Network.Connect(ctx, botJ.Network.GetListenAddr())
 				r.NoError(err)
 				t.Log(i, "connected", j)
-				time.Sleep(1*time.Second)
+				time.Sleep(1 * time.Second)
 			}
 		}
 	}

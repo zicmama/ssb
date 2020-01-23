@@ -4,10 +4,9 @@ package gossip
 
 import (
 	"context"
-	"time"
 	"sync"
+	"time"
 
-	"github.com/cryptix/go/logging"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/kit/metrics"
@@ -22,11 +21,13 @@ import (
 )
 
 type handler struct {
-	Id           *ssb.FeedRef
-	RootLog      margaret.Log
-	UserFeeds    multilog.MultiLog
-	GraphBuilder graph.Builder
-	Info         logging.Interface
+	self *ssb.FeedRef
+
+	receiveLog   margaret.Log
+	feedIndex    multilog.MultiLog
+	graphBuilder graph.Builder
+
+	logger log.Logger
 
 	hmacSec  HMACSecret
 	hopCount int
@@ -38,27 +39,27 @@ type handler struct {
 	sysGauge metrics.Gauge
 	sysCtr   metrics.Counter
 
-	feedManager *FeedManager
+	pushManager *FeedPushManager
 
 	rootCtx context.Context
 }
 
-func (g *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
+func (h *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 	remote := e.Remote()
 	remoteRef, err := ssb.GetFeedRefFromAddr(remote)
 	if err != nil {
 		return
 	}
 
-	if remoteRef.Equal(g.Id) {
+	if remoteRef.Equal(h.self) {
 		return
 	}
 
-	info := log.With(g.Info, "remote", remoteRef.Ref()[1:5], "event", "gossiprx")
+	info := log.With(h.logger, "remote", remoteRef.Ref()[1:5], "event", "gossiprx")
 	start := time.Now()
 
-	if g.promisc {
-		hasCallee, err := multilog.Has(g.UserFeeds, remoteRef.StoredAddr())
+	if h.promisc {
+		hasCallee, err := multilog.Has(h.feedIndex, remoteRef.StoredAddr())
 		if err != nil {
 			info.Log("handleConnect", "multilog.Has(callee)", "err", err)
 			return
@@ -66,7 +67,7 @@ func (g *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 
 		if !hasCallee {
 			info.Log("handleConnect", "oops - dont have feed of remote peer. requesting...")
-			if err := g.fetchFeed(ctx, remoteRef, e, time.Now()); err != nil {
+			if err := h.fetchFeed(ctx, remoteRef, e, time.Now()); err != nil {
 				info.Log("handleConnect", "fetchFeed callee failed", "err", err)
 				return
 			}
@@ -82,9 +83,9 @@ func (g *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 	default:
 	}
 
-	hops := g.GraphBuilder.Hops(g.Id, g.hopCount)
+	hops := h.graphBuilder.Hops(h.self, h.hopCount)
 	if hops != nil {
-		err := g.fetchAll(ctx, e, hops)
+		err := h.fetchAll(ctx, e, hops)
 		if muxrpc.IsSinkClosed(err) || errors.Cause(err) == context.Canceled {
 			return
 		}
@@ -95,7 +96,7 @@ func (g *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 	level.Debug(info).Log("msg", "hops fetch done", "count", hops.Count(), "took", time.Since(start))
 }
 
-func (g *handler) HandleCall(
+func (h *handler) HandleCall(
 	ctx context.Context,
 	req *muxrpc.Request,
 	edp muxrpc.Endpoint,
@@ -104,7 +105,7 @@ func (g *handler) HandleCall(
 		req.Type = "async"
 	}
 
-	hlog := log.With(g.Info, "event", "gossiptx")
+	hlog := log.With(h.logger, "event", "gossiptx")
 	errLog := level.Error(hlog)
 	dbgLog := level.Debug(hlog)
 
@@ -153,8 +154,8 @@ func (g *handler) HandleCall(
 		// dbgLog = level.Warn(hlog)
 
 		// skip this check for self/master or in promisc mode (talk to everyone)
-		if !(g.Id.Equal(remote) || g.promisc) {
-			tg, err := g.GraphBuilder.Build()
+		if !(h.self.Equal(remote) || h.promisc) {
+			tg, err := h.graphBuilder.Build()
 			if err != nil {
 				closeIfErr(errors.Wrap(err, "internal error"))
 				return
@@ -193,7 +194,7 @@ func (g *handler) HandleCall(
 			// dbgLog.Log("msg", "feed access granted")
 		}
 
-		err = g.feedManager.CreateStreamHistory(ctx, req.Stream, query)
+		err = h.pushManager.CreateStreamHistory(ctx, req.Stream, query)
 		if err != nil {
 			if luigi.IsEOS(err) {
 				req.Stream.Close()
@@ -204,7 +205,7 @@ func (g *handler) HandleCall(
 			req.Stream.CloseWithError(err)
 			return
 		}
-		// don't close stream (feedManager will pass it on to live processing or close it itself)
+		// don't close stream (pushManager will pass it on to live processing or close it itself)
 
 	case "gossip.ping":
 		err := req.Stream.Pour(ctx, time.Now().UnixNano()/1000000)

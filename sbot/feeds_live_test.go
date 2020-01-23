@@ -18,8 +18,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"go.cryptoscope.co/ssb"
-	"go.cryptoscope.co/ssb/network"
 	"go.cryptoscope.co/ssb/internal/testutils"
+	"go.cryptoscope.co/ssb/network"
 )
 
 func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
