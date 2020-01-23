@@ -41,6 +41,8 @@ type handler struct {
 
 	pushManager *FeedPushManager
 
+	pull *pullManager
+
 	rootCtx context.Context
 }
 
@@ -56,7 +58,6 @@ func (h *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 	}
 
 	info := log.With(h.logger, "remote", remoteRef.Ref()[1:5], "event", "gossiprx")
-	start := time.Now()
 
 	if h.promisc {
 		hasCallee, err := multilog.Has(h.feedIndex, remoteRef.StoredAddr())
@@ -75,25 +76,28 @@ func (h *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 		}
 	}
 
-	// TODO: ctx to build and list?!
-	// or pass rootCtx to their constructor but than we can't cancel sessions
-	select {
-	case <-ctx.Done():
-		return
-	default:
-	}
+	h.pull.RequestFeeds(ctx, e)
 
-	hops := h.graphBuilder.Hops(h.self, h.hopCount)
-	if hops != nil {
-		err := h.fetchAll(ctx, e, hops)
-		if muxrpc.IsSinkClosed(err) || errors.Cause(err) == context.Canceled {
+	/*
+		// TODO: ctx to build and list?!
+		// or pass rootCtx to their constructor but than we can't cancel sessions
+		select {
+		case <-ctx.Done():
 			return
+		default:
 		}
-		if err != nil {
-			level.Error(info).Log("msg", "hops failed", "err", err)
+
+		hops := h.graphBuilder.Hops(h.self, h.hopCount)
+		if hops != nil {
+			err := h.fetchAll(ctx, e, hops)
+			if muxrpc.IsSinkClosed(err) || errors.Cause(err) == context.Canceled {
+				return
+			}
+			if err != nil {
+				level.Error(info).Log("msg", "hops failed", "err", err)
+			}
 		}
-	}
-	level.Debug(info).Log("msg", "hops fetch done", "count", hops.Count(), "took", time.Since(start))
+	*/
 }
 
 func (h *handler) HandleCall(

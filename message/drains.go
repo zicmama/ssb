@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"go.cryptoscope.co/luigi"
 	"go.cryptoscope.co/margaret"
+	"go.cryptoscope.co/muxrpc/codec"
 	gabbygrove "go.mindeco.de/ssb-gabbygrove"
 
 	"go.cryptoscope.co/ssb"
@@ -50,7 +51,11 @@ type legacyVerify struct {
 func (lv legacyVerify) Verify(v interface{}) (ssb.Message, error) {
 	rmsg, ok := v.(json.RawMessage)
 	if !ok {
-		return nil, errors.Errorf("legacyVerify: expected %T - got %T", rmsg, v)
+		codec, ok := v.(codec.Body)
+		if !ok {
+			return nil, errors.Errorf("legacyVerify: expected %T - got %T", rmsg, v)
+		}
+		rmsg = json.RawMessage(codec)
 	}
 	ref, dmsg, err := legacy.Verify(rmsg, lv.hmacKey)
 	if err != nil {

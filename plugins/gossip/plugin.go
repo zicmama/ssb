@@ -68,6 +68,18 @@ func New(
 		h.sysCtr,
 	)
 
+	h.pull = &pullManager{
+		self:       id,
+		gb:         graphBuilder,
+		feedIndex:  userFeeds,
+		receiveLog: rootLog,
+
+		hops:    h.hopCount,
+		hmacKey: h.hmacSec,
+
+		logger: log,
+	}
+
 	return &plugin{h}
 }
 
