@@ -113,6 +113,29 @@ func (lw *latencyWrapper) Async(ctx context.Context, tipe interface{}, method mu
 	return val, err
 }
 
+func (lw *latencyWrapper) SunkenSource(ctx context.Context, snk luigi.Sink, method muxrpc.Method, args ...interface{}) error {
+	start := time.Now()
+
+	pSrc, pSink := luigi.NewPipe()
+	go func() {
+		var errStr = "nil"
+		err := luigi.Pump(ctx, snk, pSrc)
+		if err != nil {
+			errStr = errors.Cause(err).Error()
+		}
+		snk.Close()
+		lw.sum.With("method", method.String(), "type", "source", "error", errStr).Observe(time.Since(start).Seconds())
+	}()
+
+	err := lw.root.SunkenSource(ctx, pSink, method, args...)
+	if err != nil {
+		lw.sum.With("method", method.String(), "type", "sunken", "error", err.Error()).Observe(time.Since(start).Seconds())
+		return err
+	}
+
+	return nil
+}
+
 func (lw *latencyWrapper) Source(ctx context.Context, tipe interface{}, method muxrpc.Method, args ...interface{}) (luigi.Source, error) {
 	start := time.Now()
 	rootSrc, err := lw.root.Source(ctx, tipe, method, args...)
