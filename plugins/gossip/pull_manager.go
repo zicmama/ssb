@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"go.cryptoscope.co/librarian"
 	"go.cryptoscope.co/luigi"
-	"go.cryptoscope.co/luigi/mfr"
 	"go.cryptoscope.co/margaret"
 	"go.cryptoscope.co/margaret/multilog"
 	"go.cryptoscope.co/muxrpc"
@@ -22,6 +21,11 @@ import (
 	"go.cryptoscope.co/ssb/message"
 )
 
+type current struct {
+	verify   luigi.Sink
+	sequence int64
+}
+
 // pullManager can be queried for feeds that should be requested from an endpoint
 type pullManager struct {
 	self      *ssb.FeedRef // whoami
@@ -30,6 +34,8 @@ type pullManager struct {
 
 	receiveLog margaret.Log
 	// append     luigi.Sink
+
+	currentFeedState map[string]current
 
 	hops    int
 	hmacKey *[32]byte
@@ -83,26 +89,48 @@ func (pull pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) {
 		q.Live = true
 
 		// TODO: map of verify sinks for skipping!?
-		verify := message.NewVerifySink(ref, latestSeq, latestMsg, rxSink{pull.logger, pull.receiveLog}, pull.hmacKey)
+		snk := message.NewVerifySink(ref, latestSeq, latestMsg, rxSink{pull.logger, pull.receiveLog}, pull.hmacKey)
 
-		mappedSnk := mfr.SinkMap(verify, func(ctx context.Context, val interface{}) (interface{}, error) {
+		storeSnk := luigi.FuncSink(func(ctx context.Context, val interface{}, err error) error {
+			if err != nil {
+				if luigi.IsEOS(err) {
+					return nil
+				}
+				return err
+			}
 			pkt, ok := val.(*codec.Packet)
 			if !ok {
-				return nil, errors.Errorf("muxrpc: unexpected codec value: %T", val)
+				return errors.Errorf("muxrpc: unexpected codec value: %T", val)
 			}
 
 			if pkt.Flag.Get(codec.FlagEndErr) {
-				return nil, luigi.EOS{}
+				return luigi.EOS{}
 			}
 
 			if !pkt.Flag.Get(codec.FlagStream) {
-				return nil, errors.Errorf("muxtest: expected stream packet")
+				return errors.Errorf("pullManager: expected stream packet")
 			}
 
-			return pkt.Body, nil
+			return snk.Pour(ctx, pkt.Body)
+			// curr, has := pull.currentFeedState[ref.Ref()]
+			// if !has {
+			// 	// verifySnk :=
+			// 	curr = current{
+			// 		verify:   verifySnk,
+			// 		sequence: q.Seq,
+			// 	}
+			// 	pull.currentFeedState[ref.Ref()] = curr
+			// }
+
+			// err = curr.verify.Pour(ctx, pkt.Body)
+			// if err != nil {
+			// 	fmt.Println("verify pour failed:", err)
+			// 	return err
+			// }
+			return nil
 		})
 
-		err = edp.SunkenSource(ctx, mappedSnk, method, q)
+		err = edp.SunkenSource(ctx, storeSnk, method, q)
 		if err != nil {
 			err = errors.Wrapf(err, "fetchFeed(%s:%d) failed to create source", ref.Ref(), latestSeq.Seq())
 			level.Error(pull.logger).Log("event", "create source", "err", err)

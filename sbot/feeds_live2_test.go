@@ -272,7 +272,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 		0, 0, 0, 1, 0, 0,
 		0, 0, 0, 0, 0, 1,
 		0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0,
 	}
 
 	for i := 0; i < 6; i++ {

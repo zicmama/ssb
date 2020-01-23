@@ -74,6 +74,8 @@ func New(
 		feedIndex:  userFeeds,
 		receiveLog: rootLog,
 
+		currentFeedState: make(map[string]current),
+
 		hops:    h.hopCount,
 		hmacKey: h.hmacSec,
 
