@@ -62,7 +62,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 		1, 1, 1, 0,
 	}
 
-	msgCnt := 0
+	msgCnt := int64(0)
 	for i := 0; i < n; i++ {
 		for j := 0; j < n; j++ {
 			x := i*n + j
@@ -73,7 +73,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 
 			if fQ == 1 {
 				msgCnt++
-				t.Log(i, j, "following")
+				t.Log(i, "follows", j)
 				_, err := botI.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
 					Contact: botJ.KeyPair.Id,
 				})
@@ -100,7 +100,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 		for i, bot := range theBots {
 			st, err := bot.Status()
 			r.NoError(err)
-			if rootSeq := st.Root.Seq(); rootSeq != 21 {
+			if rootSeq := st.Root.Seq(); rootSeq != msgCnt-1 {
 				t.Log(i, ": seq", rootSeq)
 			}
 		}
@@ -109,7 +109,9 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	for i, bot := range theBots {
 		st, err := bot.Status()
 		r.NoError(err)
-		a.EqualValues(msgCnt-1, st.Root.Seq(), "wrong seq on %d", i)
+		a.EqualValues(msgCnt-1, st.Root.Seq(), "wrong rxSeq on bot %d", i)
+		err = bot.FSCK(nil, FSCKModeSequences)
+		a.NoError(err, "FSCK error on bot %d", i)
 		bot.Network.GetConnTracker().CloseAll()
 		g, err := bot.GraphBuilder.Build()
 		r.NoError(err)

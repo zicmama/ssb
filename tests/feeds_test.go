@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.cryptoscope.co/margaret"
 	"go.cryptoscope.co/ssb"
+	"go.cryptoscope.co/ssb/sbot"
 )
 
 func TestFeedFromJS(t *testing.T) {
@@ -257,7 +258,8 @@ func TestFeedFromGo(t *testing.T) {
 	t.Log("restarting for integrity check")
 	ts.startGoBot()
 	s = ts.gobot
-	s.FSCK(uf)
+	err = s.FSCK(uf, sbot.FSCKModeSequences)
+	r.NoError(err)
 
 	ml, ok := s.GetMultiLog("userFeeds")
 	r.True(ok)
@@ -285,7 +287,8 @@ func TestFeedFromGo(t *testing.T) {
 	r.True(ok, "wrong type of message: %T", msg)
 	r.EqualValues(storedMsg.Seq(), 4)
 
-	s.FSCK(uf)
+	err = s.FSCK(nil, sbot.FSCKModeSequences)
+	r.NoError(err)
 
 	ts.wait()
 }
