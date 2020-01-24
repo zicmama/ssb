@@ -40,7 +40,7 @@ func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
 	return theBot
 }
 
-func TestFeedsLiveNetwork(t *testing.T) {
+func TestFeedsLiveNetworkThree(t *testing.T) {
 	r := require.New(t)
 	a := assert.New(t)
 	os.RemoveAll(filepath.Join("testrun", t.Name()))

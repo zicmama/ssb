@@ -8,6 +8,7 @@ import (
 
 	"github.com/cryptix/go/logging"
 	"github.com/go-kit/kit/metrics"
+	"go.cryptoscope.co/luigi"
 	"go.cryptoscope.co/margaret"
 	"go.cryptoscope.co/margaret/multilog"
 	"go.cryptoscope.co/muxrpc"
@@ -79,7 +80,7 @@ func New(
 			append: rootLog,
 		},
 
-		currentFeedState: make(map[string]current),
+		verifySinks: make(map[string]luigi.Sink),
 
 		hops:    h.hopCount,
 		hmacKey: h.hmacSec,
