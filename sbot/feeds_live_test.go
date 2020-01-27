@@ -40,7 +40,7 @@ func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
 	return theBot
 }
 
-func TestFeedsLiveNetworkThree(t *testing.T) {
+func TestFeedsLiveSimpleThree(t *testing.T) {
 	r := require.New(t)
 	a := assert.New(t)
 	os.RemoveAll(filepath.Join("testrun", t.Name()))
@@ -59,7 +59,6 @@ func TestFeedsLiveNetworkThree(t *testing.T) {
 	netOpts := []Option{
 		WithAppKey(appKey),
 		WithHMACSigning(hmacKey),
-		// LateOption(MountMultiLog(multilogs.IndexNameFeeds, multilogs.OpenBadgerUserFeeds)),
 	}
 
 	botA := makeNamedTestBot(t, "A", netOpts)
@@ -149,23 +148,10 @@ func TestFeedsLiveNetworkThree(t *testing.T) {
 	gotMsg := make(chan int64)
 
 	seqSrc, err := feedOfBotC.Query(
-		// margaret.Gt(wantSeq),
+		margaret.Gt(wantSeq),
 		margaret.Live(true),
 	)
 	r.NoError(err)
-
-	// Gte && live is bugged?
-	for i := 0; i < 5; i++ {
-		seqv, err = seqSrc.Next(ctx)
-		t.Log("seqSrc/seq:", seqv, err)
-		a.NoError(err)
-		a.EqualValues(4+i, seqv)
-		seq := seqv.(margaret.Seq)
-		msgV, err := botA.RootLog.Get(seq)
-		r.NoError(err)
-		msg := msgV.(ssb.Message)
-		t.Log("seqSrc/msg:", msg.Seq(), msg.Key().Ref())
-	}
 
 	botgroup.Go(func() error {
 		defer close(gotMsg)
@@ -195,18 +181,19 @@ func TestFeedsLiveNetworkThree(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// now publish on C and let them bubble to A, live without reconnect
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 50; i++ {
 		seq, err := botC.PublishLog.Append("some test msg")
 		r.NoError(err)
 		r.Equal(margaret.BaseSeq(9+i), seq)
-		time.Sleep(1 * time.Second)
+
 		// received new message?
+
 		select {
 		case <-time.After(5 * time.Second):
 			t.Errorf("timeout %d....", i)
 		case seq, ok := <-gotMsg:
 			r.True(ok, "%d: gotMsg closed", i)
-			a.EqualValues(margaret.BaseSeq(3+i), seq, "wrong seq on try %d", i)
+			a.EqualValues(margaret.BaseSeq(6+i), seq, "wrong seq on try %d", i)
 		}
 	}
 
@@ -220,9 +207,6 @@ func TestFeedsLiveNetworkThree(t *testing.T) {
 
 	t.Log("done with cleanup")
 	cancel()
-	time.Sleep(1 * time.Second)
-	_, closed := <-gotMsg
-	a.True(closed, "live chan not closed")
 
 	botA.Shutdown()
 	botB.Shutdown()
@@ -234,7 +218,7 @@ func TestFeedsLiveNetworkThree(t *testing.T) {
 }
 
 // setup two bots, connect once and publish afterwards
-func TestFeedsLiveSimple(t *testing.T) {
+func TestFeedsLiveSimpleTwo(t *testing.T) {
 	r := require.New(t)
 	a := assert.New(t)
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -356,7 +340,7 @@ func TestFeedsLiveSimple(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Errorf("timeout %d....", i)
 		case seq := <-gotMsg:
-			a.EqualValues(margaret.BaseSeq(1+i), seq, "wrong seq")
+			a.EqualValues(margaret.BaseSeq(2+i), seq, "wrong seq")
 		}
 	}
 
