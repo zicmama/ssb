@@ -171,7 +171,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		rxSeq, err := theBots[n-1].PublishLog.Append(fmt.Sprintf("some test msg:%02d", n))
 		r.NoError(err)
-		a.EqualValues(margaret.BaseSeq(2+i), rxSeq)
+		a.EqualValues(margaret.BaseSeq(12+i), rxSeq)
 
 		// received new message?
 		select {
@@ -235,12 +235,12 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 		for j := 0; j < 3; j++ {
 			x := i*3 + j
 			fQ := followMatrix[x]
-			// t.Log(i, j, fQ)
 
 			botI := theBots[i]
 			botJ := theBots[j]
 
 			if fQ == 1 {
+				t.Log(i, "follows", j)
 				_, err := botI.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
 					Contact: botJ.KeyPair.Id,
 				})
@@ -290,7 +290,7 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 	// setup live listener
 	gotMsg := make(chan int64)
 
-	seqSrc, err := feedOfBotC.Query(margaret.Gte(margaret.BaseSeq(2)), margaret.Live(true))
+	seqSrc, err := mutil.Indirect(botA.RootLog, feedOfBotC).Query(margaret.Gte(margaret.BaseSeq(2)), margaret.Live(true))
 	r.NoError(err)
 
 	botgroup.Go(func() error {
@@ -312,16 +312,16 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 
 	// now publish on C and let them bubble to A, live without reconnect
 	for i := 0; i < 50; i++ {
-		seq, err := botC.PublishLog.Append("some test msg")
+		rxSeq, err := botC.PublishLog.Append("some test msg")
 		r.NoError(err)
-		r.Equal(margaret.BaseSeq(6+i), seq)
+		r.Equal(margaret.BaseSeq(6+i), rxSeq)
 
 		// received new message?
 		select {
 		case <-time.After(2 * time.Second):
 			t.Errorf("timeout %d....", i)
 		case seq := <-gotMsg:
-			a.EqualValues(margaret.BaseSeq(2+i), seq, "wrong seq")
+			a.EqualValues(margaret.BaseSeq(3+i), seq, "wrong message seq")
 		}
 	}
 
