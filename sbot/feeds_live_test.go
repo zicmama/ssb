@@ -187,7 +187,6 @@ func TestFeedsLiveSimpleThree(t *testing.T) {
 		r.Equal(margaret.BaseSeq(9+i), seq)
 
 		// received new message?
-
 		select {
 		case <-time.After(5 * time.Second):
 			t.Errorf("timeout %d....", i)

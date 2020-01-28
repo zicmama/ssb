@@ -169,17 +169,13 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 
 	// now publish on C and let them bubble to A, live without reconnect
 	for i := 0; i < 5; i++ {
-		_, err := theBots[n-1].PublishLog.Append(fmt.Sprintf("some test msg:%02d", n))
+		rxSeq, err := theBots[n-1].PublishLog.Append(fmt.Sprintf("some test msg:%02d", n))
 		r.NoError(err)
-		// a.EqualValues(margaret.BaseSeq(2+i), rxSeq)
-
-		// msgv, err := theBots[n-1].RootLog.Get(rxSeq)
-		// r.NoError(err)
-		// seq := msgv.(ssb.Message).Seq()
+		a.EqualValues(margaret.BaseSeq(2+i), rxSeq)
 
 		// received new message?
 		select {
-		case <-time.After(1 * time.Second):
+		case <-time.After(2 * time.Second):
 			t.Errorf("timeout %d....", i)
 		case seq := <-gotMsg:
 			a.EqualValues(margaret.BaseSeq(3+i), seq, "wrong seq")

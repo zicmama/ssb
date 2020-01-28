@@ -70,7 +70,7 @@ func New(
 	)
 
 	h.pull = &pullManager{
-		self:      id,
+		self:      *id,
 		gb:        graphBuilder,
 		feedIndex: userFeeds,
 
@@ -166,10 +166,10 @@ func (histPlugin) Method() muxrpc.Method {
 	return muxrpc.Method{"createHistoryStream"}
 }
 
-type IgnoreConnectHandler struct{ muxrpc.Handler }
+type ignoreConnectHandler struct{ muxrpc.Handler }
 
-func (IgnoreConnectHandler) HandleConnect(ctx context.Context, edp muxrpc.Endpoint) {}
+func (ignoreConnectHandler) HandleConnect(ctx context.Context, edp muxrpc.Endpoint) {}
 
 func (hp histPlugin) Handler() muxrpc.Handler {
-	return IgnoreConnectHandler{hp.h}
+	return ignoreConnectHandler{hp.h}
 }
