@@ -78,6 +78,7 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 	for _, ref := range hopsLst {
 		select {
 		case <-ctx.Done():
+			level.Debug(pull.logger).Log("msg", "pull canceled")
 			return
 		default:
 		}
@@ -152,44 +153,47 @@ func (pull pullManager) getLatestSeq(fr *ssb.FeedRef) (margaret.Seq, ssb.Message
 		return nil, nil, errors.Wrapf(err, "failed to observe latest")
 	}
 
-	switch v := latest.(type) {
-	// case librarian.UnsetValue:
-	// 	// nothing stored, fetch from zero
-	// 	return margaret.SeqEmpty, nil, nil
-	case margaret.BaseSeq:
-		if v == margaret.SeqEmpty {
-			return margaret.BaseSeq(0), nil, nil
-		}
-
-		rootLogValue, err := feed.Get(v)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "failed to look up root seq for latest user sublog")
-		}
-
-		msgV, err := pull.receiveLog.Get(rootLogValue.(margaret.Seq))
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "failed retreive stored message")
-		}
-
-		latestMsg, ok := msgV.(ssb.Message)
-		if !ok {
-			return nil, nil, errors.Errorf("fetch: wrong message type. expected %T - got %T", latestMsg, msgV)
-		}
-
-		var latestSeq margaret.BaseSeq = v + 1 // sublog is 0-init while ssb chains start at 1
-		// make sure our house is in order
-		if hasSeq := latestMsg.Seq(); hasSeq != latestSeq.Seq() {
-			return nil, nil, ssb.ErrWrongSequence{
-				Ref:     fr,
-				Stored:  latestMsg,
-				Logical: latestSeq}
-		}
-
-		return latestSeq, latestMsg, nil
-
-	default:
+	currSeq, ok := latest.(margaret.BaseSeq)
+	if !ok {
 		return nil, nil, errors.Errorf("pullManager: unexpected type in sequence log: %T", latest)
 	}
+
+	if currSeq == margaret.SeqEmpty {
+		return margaret.BaseSeq(0), nil, nil
+	}
+
+	rootLogValue, err := feed.Get(currSeq)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to look up root seq for latest user sublog")
+	}
+
+	rootLogSeq, ok := rootLogValue.(margaret.Seq)
+	if !ok {
+		return nil, nil, errors.Errorf("pullManager: unexpected type in sublog: %T", rootLogValue)
+	}
+
+	msgV, err := pull.receiveLog.Get(rootLogSeq)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed retreive stored message")
+	}
+
+	latestMsg, ok := msgV.(ssb.Message)
+	if !ok {
+		return nil, nil, errors.Errorf("fetch: wrong message type. expected %T - got %T", latestMsg, msgV)
+	}
+
+	// sublog is 0-init while ssb chains start at 1
+	var latestSeq margaret.BaseSeq = currSeq + 1
+
+	// make sure our house is in order
+	if hasSeq := latestMsg.Seq(); hasSeq != latestSeq.Seq() {
+		return nil, nil, ssb.ErrWrongSequence{
+			Ref:     fr,
+			Stored:  latestMsg,
+			Logical: latestSeq}
+	}
+
+	return latestSeq, latestMsg, nil
 }
 
 func lockedSink(sink luigi.Sink) luigi.Sink {

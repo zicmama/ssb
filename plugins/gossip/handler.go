@@ -40,8 +40,7 @@ type handler struct {
 	sysCtr   metrics.Counter
 
 	pushManager *FeedPushManager
-
-	pull *pullManager
+	pull        *pullManager
 
 	rootCtx context.Context
 }
