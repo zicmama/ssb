@@ -243,24 +243,20 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 
 	ok := n.connTracker.OnAccept(conn)
 	if !ok {
-		err := origConn.Close()
+		err := conn.Close()
+		// err := origConn.Close()
 		n.log.Log("conn", "ignored", "remote", conn.RemoteAddr(), "err", err)
 		return
 	}
-	var edp muxrpc.Endpoint
-
-	fmt.Println("wrapped and accepted", conn.RemoteAddr().String())
 
 	ctx, cancel := ctxutils.WithError(ctx, fmt.Errorf("handle conn returned"))
 
 	defer func() {
-		durr := n.connTracker.OnClose(conn)
-		var edpTerm, connClose error
-		if edp != nil {
-			edpTerm = errors.Wrap(edp.Terminate(), "packer closing")
-		}
-		connClose = errors.Wrap(origConn.Close(), "direct conn closing")
-		level.Debug(n.log).Log("event", "conn-closing", "edpTerm", edpTerm, "connClose", connClose, "durr", durr)
+		n.connTracker.OnClose(conn)
+		conn.Close()
+		origConn.Close()
+		// connClose = errors.Wrap(, "direct conn closing")
+		// level.Debug(n.log).Log("event", "conn-closing", "edpTerm", edpTerm, "connClose", connClose, "durr", durr)
 		cancel()
 	}()
 
@@ -283,17 +279,18 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 
 	pkr := muxrpc.NewPacker(conn)
 	filtered := level.NewFilter(n.log, level.AllowInfo())
-	edp = muxrpc.HandleWithLogger(pkr, h, filtered)
+	edp := muxrpc.HandleWithLogger(pkr, h, filtered)
 
 	if n.edpWrapper != nil {
 		edp = n.edpWrapper(edp)
 	}
 	n.addRemote(edp)
 
+	defer edp.Terminate()
 	srv := edp.(muxrpc.Server)
 
 	if err := srv.Serve(ctx); err != nil {
-		level.Debug(n.log).Log("conn", "serve", "err", err)
+		// level.Debug(n.log).Log("conn", "serve", "err", err)
 	}
 	n.removeRemote(edp)
 }
@@ -422,7 +419,6 @@ func (n *node) Connect(ctx context.Context, addr net.Addr) error {
 		}
 		return errors.Wrap(err, "node/connect: error dialing")
 	}
-fmt.Println("dialed", addr.String())
 
 	go func(c net.Conn) {
 		n.handleConnection(ctx, c)
