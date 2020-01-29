@@ -78,7 +78,7 @@ func NewCreateHistArgsFromMap(argMap map[string]interface{}) (*CreateHistArgs, e
 }
 
 type CommonArgs struct {
-	Keys   bool `json:"keys,omitempty"`
+	Keys   bool `json:"keys"` // can't omit this falsy value, the JS-stack stack assumes true if it's not there
 	Values bool `json:"values,omitempty"`
 	Live   bool `json:"live,omitempty"`
 
