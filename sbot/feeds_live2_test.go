@@ -525,3 +525,29 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 	}
 	r.NoError(botgroup.Wait())
 }
+
+func makeChanWaiter(ctx context.Context, storeLog margaret.Log, src luigi.Source, gotMsg chan<- int64) func() error {
+	return func() error {
+		defer close(gotMsg)
+		for {
+			seqV, err := src.Next(ctx)
+			if err != nil {
+				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
+					fmt.Println("query exited", err)
+					return nil
+				}
+				return err
+			}
+			seq := seqV.(margaret.Seq)
+			// msgV, err := storeLog.Get(seq)
+			// if err != nil {
+			// 	return err
+			// }
+			// msg := msgV.(ssb.Message)
+			// gotMsg <- msg.Seq()
+
+			fmt.Println("rxFeed", seq.Seq()) // "msgSeq", msg.Seq(), "key", msg.Key().Ref())
+			gotMsg <- seq.Seq()
+		}
+	}
+}

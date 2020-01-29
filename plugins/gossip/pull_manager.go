@@ -53,7 +53,7 @@ func (snk *rxSink) Pour(ctx context.Context, val interface{}) error {
 		return errors.Wrap(err, "failed to append verified message to rootLog")
 	}
 	msg := val.(ssb.Message)
-	level.Warn(snk.logger).Log("receivedAsSeq", rxSeq.Seq(), "msgSeq", msg.Seq(), "ref", msg.Key().Ref())
+	level.Warn(snk.logger).Log("receivedAsSeq", rxSeq.Seq(), "msgSeq", msg.Seq(), "author", msg.Author().Ref()[1:5])
 	snk.mu.Unlock()
 	return nil
 }
@@ -61,13 +61,13 @@ func (snk *rxSink) Pour(ctx context.Context, val interface{}) error {
 func (snk *rxSink) Close() error { return nil }
 
 func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) {
-	hSet := pull.gb.Hops(&pull.self, pull.hops)
-	if hSet == nil {
+	pull.verifyMu.Lock()
+	defer pull.verifyMu.Unlock()
+	hops := pull.gb.Hops(&pull.self, pull.hops)
+	if hops == nil {
 		level.Warn(pull.logger).Log("event", "nil hops set")
 		return
 	}
-
-	hops := *hSet
 
 	hopsLst, err := hops.List()
 	if err != nil {
@@ -75,15 +75,10 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 		return
 	}
 
+	var latestSeq margaret.Seq
+	var latestMsg ssb.Message
 	for _, ref := range hopsLst {
-		select {
-		case <-ctx.Done():
-			level.Debug(pull.logger).Log("msg", "pull canceled")
-			return
-		default:
-		}
-
-		latestSeq, latestMsg, err := pull.getLatestSeq(ref)
+		latestSeq, latestMsg, err = pull.getLatestSeq(ref)
 		if err != nil {
 			level.Error(pull.logger).Log("event", "failed to get sequence for feed", "err", err, "fr", ref.Ref()[1:5])
 			return
@@ -92,22 +87,21 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 		// prepare query arguments for rpc call
 		method := muxrpc.Method{"createHistoryStream"}
 		var q = message.CreateHistArgs{
-			ID:  ref,
-			Seq: int64(latestSeq.Seq() + 1),
-			StreamArgs: message.StreamArgs{
-				Limit: -1},
+			ID:         ref,
+			Seq:        int64(latestSeq.Seq() + 1),
+			StreamArgs: message.StreamArgs{Limit: -1},
+			CommonArgs: message.CommonArgs{Live: true},
 		}
-		q.Live = true
 
 		// one sink per feed
-		pull.verifyMu.Lock()
+
 		verifySink, has := pull.verifySinks[ref.Ref()]
 		if !has {
 			verifySink = message.NewVerifySink(ref, latestSeq, latestMsg, pull.append, pull.hmacKey)
 			verifySink = lockedSink(verifySink)
 			pull.verifySinks[ref.Ref()] = verifySink
 		}
-		pull.verifyMu.Unlock()
+		// pull.verifyMu.Unlock()
 
 		// unwrap the codec packet for the SunkenSource call and forward it to the verifySink
 		storeSnk := luigi.FuncSink(func(ctx context.Context, val interface{}, err error) error {
