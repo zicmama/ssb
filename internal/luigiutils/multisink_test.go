@@ -55,6 +55,7 @@ func TestMultiLogSinkWrapped(t *testing.T) {
 			return s.Pour(ctx, v)
 		})
 		// need to take the pointer otherwise it's an unhashable type!
+		// TODO: could refactor multiSink not to use map[luigi.Sink] internally
 		return &fsnk
 	}
 	t.Run("luigi FuncSink", MutliSinkWithWrappedSink(luigiFuncSink))

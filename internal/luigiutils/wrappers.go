@@ -15,7 +15,7 @@ import (
 // it then unpacks them as gabygrove, reencodes the transfer object to bytes
 // and passes those as muxrpc codec.Body to the wrapped sink
 func NewGabbyStreamSink(stream luigi.Sink) luigi.Sink {
-	return luigi.FuncSink(func(ctx context.Context, v interface{}, err error) error {
+	wrappedSink := luigi.FuncSink(func(ctx context.Context, v interface{}, err error) error {
 		if err != nil {
 			return err
 		}
@@ -36,6 +36,7 @@ func NewGabbyStreamSink(stream luigi.Sink) luigi.Sink {
 
 		return stream.Pour(ctx, codec.Body(trdata))
 	})
+	return &wrappedSink
 }
 
 // NewSinkCounter returns a new Sink which increases the given counter when poured to.
