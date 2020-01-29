@@ -13,6 +13,7 @@ import (
 	"go.cryptoscope.co/margaret"
 
 	"go.cryptoscope.co/ssb"
+	"go.cryptoscope.co/ssb/message/multimsg"
 )
 
 func NewKeyValueWrapper(snk luigi.Sink, wrap bool) luigi.Sink {
@@ -32,6 +33,20 @@ func NewKeyValueWrapper(snk luigi.Sink, wrap bool) luigi.Sink {
 		}
 
 		if !wrap {
+			// skip re-encoding in some cases
+			if mm, ok := abs.(*multimsg.MultiMessage); ok {
+				leg, ok := mm.AsLegacy()
+				if ok {
+					return json.RawMessage(leg.Raw_), nil
+				}
+			}
+			if mm, ok := abs.(multimsg.MultiMessage); ok {
+				leg, ok := mm.AsLegacy()
+				if ok {
+					return json.RawMessage(leg.Raw_), nil
+				}
+			}
+
 			return json.RawMessage(abs.ValueContentJSON()), nil
 		}
 
