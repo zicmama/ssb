@@ -136,17 +136,27 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 				}
 				err := botX.Network.Connect(ctx, botY.Network.GetListenAddr())
 				r.NoError(err)
+				time.Sleep(time.Second / 3) // TODO: initial race protection
 			}
+			time.Sleep(time.Second / 5) // TODO: initial race protection
+			botX.Network.GetConnTracker().CloseAll()
 		}
-		t.Log(z, "initialSync..")
-		time.Sleep(1 * time.Second)
+
+		complete := 0
 		for i, bot := range theBots {
 			st, err := bot.Status()
 			r.NoError(err)
 			if rootSeq := st.Root.Seq(); rootSeq != 14 {
 				t.Log("init sync delay on bot", i, ": seq", rootSeq)
+			} else {
+				complete++
 			}
 		}
+		if len(theBots) == complete {
+			t.Log("initsync done")
+			break
+		}
+		t.Log(z, "initialSync..")
 	}
 
 	// check and disconnect
@@ -162,13 +172,13 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 	// dial up A->B, B->C, C->D
 	err = botA.Network.Connect(ctx, botB.Network.GetListenAddr())
 	r.NoError(err)
-	time.Sleep(time.Second / 2)
+	time.Sleep(time.Second / 2) // TODO: initial race protection
 	err = botB.Network.Connect(ctx, botC.Network.GetListenAddr())
 	r.NoError(err)
-	time.Sleep(time.Second / 2)
+	time.Sleep(time.Second / 2) // TODO: initial race protection
 	err = botC.Network.Connect(ctx, botD.Network.GetListenAddr())
 	r.NoError(err)
-	time.Sleep(time.Second / 2)
+	time.Sleep(time.Second / 2) // TODO: initial race protection
 
 	// did B get feed C?
 	ufOfBotB, ok := botB.GetMultiLog("userFeeds")
@@ -198,11 +208,9 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 
 	t.Log("starting live test")
 
-	time.Sleep(1 * time.Second)
-
 	// now publish on C and let them bubble to A, live without reconnect
 	for i := 0; i < 50; i++ {
-		seq, err := botC.PublishLog.Append("some test msg")
+		seq, err := botD.PublishLog.Append("some test msg")
 		r.NoError(err)
 		r.Equal(margaret.BaseSeq(15+i), seq)
 
@@ -216,23 +224,15 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 		}
 	}
 
-	// cleanup
-	err = botA.FSCK(nil, FSCKModeSequences)
-	a.NoError(err, "FSCK error on A")
-	err = botB.FSCK(nil, FSCKModeSequences)
-	a.NoError(err, "FSCK error on B")
-	err = botC.FSCK(nil, FSCKModeSequences)
-	a.NoError(err, "FSCK error on C")
-
-	t.Log("done with cleanup")
+	t.Log("cleanup")
 	cancel()
-
-	botA.Shutdown()
-	botB.Shutdown()
-	botC.Shutdown()
-	r.NoError(botA.Close())
-	r.NoError(botB.Close())
-	r.NoError(botC.Close())
+	time.Sleep(1 * time.Second)
+	for _, bot := range theBots {
+		err = bot.FSCK(nil, FSCKModeSequences)
+		a.NoError(err)
+		bot.Shutdown()
+		r.NoError(bot.Close())
+	}
 	r.NoError(botgroup.Wait())
 }
 
@@ -413,13 +413,13 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 	botgroup.Go(bs.Serve(botB1))
 	bLeafs = append(bLeafs, botB1)
 
-	// botB2 := makeNamedTestBot(t, "B2", netOpts)
-	// botgroup.Go(bs.Serve(botB2))
-	// bLeafs = append(bLeafs, botB2)
+	botB2 := makeNamedTestBot(t, "B2", netOpts)
+	botgroup.Go(bs.Serve(botB2))
+	bLeafs = append(bLeafs, botB2)
 
-	// botB3 := makeNamedTestBot(t, "B3", netOpts)
-	// botgroup.Go(bs.Serve(botB3))
-	// bLeafs = append(bLeafs, botB3)
+	botB3 := makeNamedTestBot(t, "B3", netOpts)
+	botgroup.Go(bs.Serve(botB3))
+	bLeafs = append(bLeafs, botB3)
 
 	theBots := []*Sbot{botA, botI} // all the bots
 	theBots = append(theBots, bLeafs...)
