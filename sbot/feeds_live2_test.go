@@ -42,18 +42,29 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	netOpts := []Option{
 		WithAppKey(appKey),
 		WithHMACSigning(hmacKey),
-		WithHops(3),
+		// WithHops(3),
 	}
 
 	theBots := []*Sbot{}
 	n := 4
-	for i := 0; i < n; i++ {
+	// for i := 0; i < n; i++ {
 
-		botN := makeNamedTestBot(t, strconv.Itoa(i), netOpts)
-		botgroup.Go(bs.Serve(botN))
+	bot1 := makeNamedTestBot(t, strconv.Itoa(0), netOpts)
+	botgroup.Go(bs.Serve(bot1))
+	theBots = append(theBots, bot1)
 
-		theBots = append(theBots, botN)
-	}
+	bot2 := makeNamedTestBot(t, strconv.Itoa(1), netOpts)
+	botgroup.Go(bs.Serve(bot2))
+	theBots = append(theBots, bot2)
+
+	bot3 := makeNamedTestBot(t, strconv.Itoa(2), netOpts)
+	botgroup.Go(bs.Serve(bot3))
+	theBots = append(theBots, bot3)
+
+	bot4 := makeNamedTestBot(t, strconv.Itoa(3), netOpts)
+	botgroup.Go(bs.Serve(bot4))
+	theBots = append(theBots, bot4)
+	// }
 
 	followMatrix := []int{
 		0, 1, 1, 1,
@@ -106,6 +117,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 		}
 		// firstSync()
 	}
+
 	for i, bot := range theBots {
 		st, err := bot.Status()
 		r.NoError(err)
@@ -113,11 +125,13 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 		err = bot.FSCK(nil, FSCKModeSequences)
 		a.NoError(err, "FSCK error on bot %d", i)
 		bot.Network.GetConnTracker().CloseAll()
-		g, err := bot.GraphBuilder.Build()
-		r.NoError(err)
-		err = g.RenderSVGToFile(filepath.Join("testrun", t.Name(), fmt.Sprintf("bot%d.svg", i)))
-		r.NoError(err)
+		// g, err := bot.GraphBuilder.Build()
+		// r.NoError(err)
+		// err = g.RenderSVGToFile(filepath.Join("testrun", t.Name(), fmt.Sprintf("bot%d.svg", i)))
+		// r.NoError(err)
 	}
+
+	t.Log("initial sync done")
 
 	// dial up a chain
 	for i := 0; i < n-1; i++ {
@@ -184,6 +198,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 
 	// cleanup
 	cancel()
+	time.Sleep(1 * time.Second)
 	for _, bot := range theBots {
 		err = bot.FSCK(nil, FSCKModeSequences)
 		a.NoError(err)
@@ -281,13 +296,8 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 	r.NoError(err)
 	r.EqualValues(margaret.BaseSeq(1), seqv, "after connect check")
 
-	// also connect A to C directy to have two paths and filter duplicates
-	// time.Sleep(3 * time.Second)
-	// err = botA.Network.Connect(ctx, botC.Network.GetListenAddr())
-	// r.NoError(err)
-	// time.Sleep(1 * time.Second)
+	t.Log("commencing live tests")
 
-	// setup live listener
 	gotMsg := make(chan int64)
 
 	seqSrc, err := mutil.Indirect(botA.RootLog, feedOfBotC).Query(margaret.Gte(margaret.BaseSeq(2)), margaret.Live(true))
@@ -298,6 +308,7 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 			seqV, err := seqSrc.Next(ctx)
 			if err != nil {
 				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
+					t.Log("live query excited:", err)
 					break
 				}
 				return err
@@ -327,6 +338,7 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 
 	// cleanup
 	cancel()
+	time.Sleep(1 * time.Second)
 	for _, bot := range theBots {
 		err = bot.FSCK(nil, FSCKModeSequences)
 		a.NoError(err)
@@ -400,7 +412,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 
 	// initial sync
 	// initialSyncCtx, initialSync := context.WithCancel(ctx)
-	for z := 8; z >= 0; z-- {
+	for z := 6; z >= 0; z-- {
 		// connectCtx, firstSync := context.WithCancel(ctx)
 
 		for n := 5; n >= 0; n-- {
@@ -491,13 +503,14 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 
 			seq := seqV.(margaret.Seq)
 			info.Log("rxFeedC", seq.Seq())
+			// TODO: use makeChanWaiter
 			gotMsg <- seq.Seq()
 		}
 		return nil
 	})
 
 	// now publish on C and let them bubble to A, live without reconnect
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 5; i++ {
 		tMsg := fmt.Sprintf("some test msg %d", i)
 		seq, err := theBots[5].PublishLog.Append(tMsg)
 		r.NoError(err)
@@ -526,11 +539,11 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 	r.NoError(botgroup.Wait())
 }
 
-func makeChanWaiter(ctx context.Context, storeLog margaret.Log, src luigi.Source, gotMsg chan<- int64) func() error {
+func makeChanWaiter(ctx context.Context, src luigi.Source, gotMsg chan<- int64) func() error {
 	return func() error {
 		defer close(gotMsg)
 		for {
-			seqV, err := src.Next(ctx)
+			v, err := src.Next(ctx)
 			if err != nil {
 				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
 					fmt.Println("query exited", err)
@@ -538,16 +551,11 @@ func makeChanWaiter(ctx context.Context, storeLog margaret.Log, src luigi.Source
 				}
 				return err
 			}
-			seq := seqV.(margaret.Seq)
-			// msgV, err := storeLog.Get(seq)
-			// if err != nil {
-			// 	return err
-			// }
-			// msg := msgV.(ssb.Message)
-			// gotMsg <- msg.Seq()
 
-			fmt.Println("rxFeed", seq.Seq()) // "msgSeq", msg.Seq(), "key", msg.Key().Ref())
-			gotMsg <- seq.Seq()
+			msg := v.(ssb.Message)
+
+			fmt.Println("rxFeed", msg.Seq(), "msgSeq", msg.Seq(), "key", msg.Key().Ref())
+			gotMsg <- msg.Seq()
 		}
 	}
 }
