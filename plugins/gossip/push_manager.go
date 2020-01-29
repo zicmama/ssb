@@ -18,6 +18,7 @@ import (
 	"go.cryptoscope.co/margaret"
 	"go.cryptoscope.co/margaret/multilog"
 	"go.cryptoscope.co/ssb"
+	"go.cryptoscope.co/ssb/internal/luigiutils"
 	"go.cryptoscope.co/ssb/internal/mutil"
 	"go.cryptoscope.co/ssb/internal/transform"
 	"go.cryptoscope.co/ssb/message"
@@ -31,7 +32,7 @@ type FeedPushManager struct {
 	UserFeeds multilog.MultiLog
 	logger    logging.Interface
 
-	liveFeeds    map[string]*multiSink
+	liveFeeds    map[string]*luigiutils.MultiSink
 	liveFeedsMut sync.Mutex
 
 	// metrics
@@ -56,7 +57,7 @@ func NewFeedPushManager(
 		rootCtx:   ctx,
 		sysCtr:    sysCtr,
 		sysGauge:  sysGauge,
-		liveFeeds: make(map[string]*multiSink),
+		liveFeeds: make(map[string]*luigiutils.MultiSink),
 	}
 	// QUESTION: How should the error case be handled?
 	go fm.serveLiveFeeds()
@@ -120,7 +121,7 @@ func (m *FeedPushManager) addLiveFeed(
 
 	liveFeed, ok := m.liveFeeds[ssbID]
 	if !ok {
-		m.liveFeeds[ssbID] = newMultiSink(seq)
+		m.liveFeeds[ssbID] = luigiutils.NewMultiSink(seq)
 		liveFeed = m.liveFeeds[ssbID]
 	}
 
@@ -239,14 +240,14 @@ func (m *FeedPushManager) CreateStreamHistory(
 		case arg.AsJSON:
 			sink = transform.NewKeyValueWrapper(sink, arg.Keys)
 		default:
-			sink = gabbyStreamSink(sink)
+			sink = luigiutils.NewGabbyStreamSink(sink)
 		}
 	default:
 		return errors.Errorf("unsupported feed format.")
 	}
 
 	sent := 0
-	err = luigi.Pump(ctx, newSinkCounter(&sent, sink), src)
+	err = luigi.Pump(ctx, luigiutils.NewSinkCounter(&sent, sink), src)
 	if m.sysCtr != nil {
 		m.sysCtr.With("event", "gossiptx").Add(float64(sent))
 	} else {
