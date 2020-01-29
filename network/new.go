@@ -62,6 +62,7 @@ type node struct {
 
 	closed   bool
 	closedMu sync.RWMutex
+	lisClose sync.Once
 
 	dialer        netwrap.Dialer
 	l             net.Listener
@@ -302,15 +303,22 @@ func (n *node) Serve(ctx context.Context, wrappers ...muxrpc.HandlerWrapper) err
 	// TODO: make multiple listeners (localhost:8008 should not restrict or kill connections)
 	lisWrap := netwrap.NewListenerWrapper(n.secretServer.Addr(), append(n.opts.BefreCryptoWrappers, n.secretServer.ConnWrapper())...)
 	var err error
+	n.closedMu.Lock()
 	n.l, err = netwrap.Listen(n.opts.ListenAddr, lisWrap)
 	if err != nil {
+		n.closedMu.Unlock()
 		return errors.Wrap(err, "error creating listener")
 	}
+	n.lisClose = sync.Once{} // reset once
+	close(n.listening)
+	n.closedMu.Unlock()
+
 	defer func() {
-		defer n.l.Close()
+		n.lisClose.Do(func() {
+			n.l.Close()
+		})
 		n.listening = make(chan struct{})
 	}()
-	close(n.listening)
 
 	if n.localDiscovTx != nil {
 		n.localDiscovTx.Start()
@@ -462,9 +470,12 @@ func (n *node) Close() error {
 	}
 
 	if n.l != nil {
-		err := n.l.Close()
-		if err != nil && !strings.Contains(errors.Cause(err).Error(), "use of closed network connection") {
-			return errors.Wrap(err, "ssb: network node failed to close it's listener")
+		var closeErr error
+		n.lisClose.Do(func() {
+			closeErr = n.l.Close()
+		})
+		if closeErr != nil && !strings.Contains(errors.Cause(closeErr).Error(), "use of closed network connection") {
+			return errors.Wrap(closeErr, "ssb: network node failed to close it's listener")
 		}
 	}
 
