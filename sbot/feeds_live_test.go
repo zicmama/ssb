@@ -43,7 +43,7 @@ func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
 	return theBot
 }
 
-func TestFeedsLiveSimpleThree(t *testing.T) {
+func TestFeedsLiveSimpleFour(t *testing.T) {
 	r := require.New(t)
 	a := assert.New(t)
 	os.RemoveAll(filepath.Join("testrun", t.Name()))
@@ -73,111 +73,128 @@ func TestFeedsLiveSimpleThree(t *testing.T) {
 	botC := makeNamedTestBot(t, "C", netOpts)
 	botgroup.Go(bs.Serve(botC))
 
+	botD := makeNamedTestBot(t, "D", netOpts)
+	botgroup.Go(bs.Serve(botD))
+
 	// be-friend the network
-	_, err := botA.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
-		Contact: botB.KeyPair.Id,
-	})
+	_, err := botA.PublishLog.Append(ssb.NewContactFollow(botB.KeyPair.Id))
 	r.NoError(err)
-	_, err = botA.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
-		Contact: botC.KeyPair.Id,
-	})
+	_, err = botA.PublishLog.Append(ssb.NewContactFollow(botC.KeyPair.Id))
+	r.NoError(err)
+	_, err = botA.PublishLog.Append(ssb.NewContactFollow(botD.KeyPair.Id))
 	r.NoError(err)
 
-	_, err = botB.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
-		Contact: botA.KeyPair.Id,
-	})
+	_, err = botB.PublishLog.Append(ssb.NewContactFollow(botA.KeyPair.Id))
 	r.NoError(err)
-	_, err = botB.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
-		Contact: botC.KeyPair.Id,
-	})
+	_, err = botB.PublishLog.Append(ssb.NewContactFollow(botC.KeyPair.Id))
+	r.NoError(err)
+	_, err = botB.PublishLog.Append(ssb.NewContactFollow(botD.KeyPair.Id))
 	r.NoError(err)
 
-	_, err = botC.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
-		Contact: botA.KeyPair.Id,
-	})
+	_, err = botC.PublishLog.Append(ssb.NewContactFollow(botA.KeyPair.Id))
 	r.NoError(err)
-	_, err = botC.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
-		Contact: botB.KeyPair.Id,
-	})
+	_, err = botC.PublishLog.Append(ssb.NewContactFollow(botB.KeyPair.Id))
+	r.NoError(err)
+	_, err = botC.PublishLog.Append(ssb.NewContactFollow(botD.KeyPair.Id))
 	r.NoError(err)
 
-	msgRef, err := botC.PublishLog.Publish("testmsg1")
+	_, err = botD.PublishLog.Append(ssb.NewContactFollow(botA.KeyPair.Id))
+	r.NoError(err)
+	_, err = botD.PublishLog.Append(ssb.NewContactFollow(botB.KeyPair.Id))
+	r.NoError(err)
+	_, err = botD.PublishLog.Append(ssb.NewContactFollow(botC.KeyPair.Id))
+	r.NoError(err)
+
+	msgRef, err := botD.PublishLog.Publish("testmsg1")
 	r.NoError(err)
 	t.Log("tst1:", msgRef.Ref())
-	msgRef, err = botC.PublishLog.Publish("testmsg2")
+	msgRef, err = botD.PublishLog.Publish("testmsg2")
 	r.NoError(err)
 	t.Log("tst2:", msgRef.Ref())
-	msgRef, err = botC.PublishLog.Publish("testmsg3")
+	msgRef, err = botD.PublishLog.Publish("testmsg3")
 	r.NoError(err)
 	t.Log("tst3:", msgRef.Ref())
 
 	// check feed of C is empty on bot A
 	uf, ok := botA.GetMultiLog("userFeeds")
 	r.True(ok)
-	feedOfBotC, err := uf.Get(botC.KeyPair.Id.StoredAddr())
+	feedOfBotD, err := uf.Get(botD.KeyPair.Id.StoredAddr())
 	r.NoError(err)
 
-	seqv, err := feedOfBotC.Seq().Value()
+	seqv, err := feedOfBotD.Seq().Value()
 	r.NoError(err)
 	r.EqualValues(margaret.BaseSeq(-1), seqv, "before connect check")
 
-	// dial up A->B and B->C (initial sync)
+	// initial sync
+	theBots := []*Sbot{botA, botB, botC, botD}
+	for z := 3; z > 0; z-- {
+
+		for bI, botX := range theBots {
+			for bJ, botY := range theBots {
+				if bI == bJ {
+					continue
+				}
+				err := botX.Network.Connect(ctx, botY.Network.GetListenAddr())
+				r.NoError(err)
+			}
+		}
+		t.Log(z, "initialSync..")
+		time.Sleep(1 * time.Second)
+		for i, bot := range theBots {
+			st, err := bot.Status()
+			r.NoError(err)
+			if rootSeq := st.Root.Seq(); rootSeq != 14 {
+				t.Log("init sync delay on bot", i, ": seq", rootSeq)
+			}
+		}
+	}
+
+	// check and disconnect
+	for i, bot := range theBots {
+		st, err := bot.Status()
+		r.NoError(err)
+		a.EqualValues(14, st.Root.Seq(), "wrong rxSeq on bot %d", i)
+		err = bot.FSCK(nil, FSCKModeSequences)
+		a.NoError(err, "FSCK error on bot %d", i)
+		bot.Network.GetConnTracker().CloseAll()
+	}
+
+	// dial up A->B, B->C, C->D
 	err = botA.Network.Connect(ctx, botB.Network.GetListenAddr())
 	r.NoError(err)
 	time.Sleep(time.Second / 2)
 	err = botB.Network.Connect(ctx, botC.Network.GetListenAddr())
 	r.NoError(err)
 	time.Sleep(time.Second / 2)
-	err = botA.Network.Connect(ctx, botB.Network.GetListenAddr())
+	err = botC.Network.Connect(ctx, botD.Network.GetListenAddr())
 	r.NoError(err)
 	time.Sleep(time.Second / 2)
 
 	// did B get feed C?
 	ufOfBotB, ok := botB.GetMultiLog("userFeeds")
 	r.True(ok)
-	feedOfBotCAtB, err := ufOfBotB.Get(botC.KeyPair.Id.StoredAddr())
+	feedOfBotDAtB, err := ufOfBotB.Get(botD.KeyPair.Id.StoredAddr())
 	r.NoError(err)
-	seqv, err = feedOfBotCAtB.Seq().Value()
+	seqv, err = feedOfBotDAtB.Seq().Value()
 	r.NoError(err)
-	r.EqualValues(margaret.BaseSeq(4), seqv, "after connect check")
+	r.EqualValues(margaret.BaseSeq(5), seqv, "after connect check")
 
 	// should now have 5 msgs now (the two contact messages from C on A + 3 tests)
-	seqv, err = feedOfBotC.Seq().Value()
+	seqv, err = feedOfBotD.Seq().Value()
 	r.NoError(err)
-	wantSeq := margaret.BaseSeq(4)
+	wantSeq := margaret.BaseSeq(5)
 	r.EqualValues(wantSeq, seqv, "should have all of C's messages")
 
 	// setup live listener
 	gotMsg := make(chan int64)
 
-	seqSrc, err := feedOfBotC.Query(
+	seqSrc, err := mutil.Indirect(botA.RootLog, feedOfBotD).Query(
 		margaret.Gt(wantSeq),
 		margaret.Live(true),
 	)
 	r.NoError(err)
 
-	botgroup.Go(func() error {
-		defer close(gotMsg)
-		for {
-			seqV, err := seqSrc.Next(ctx)
-			if err != nil {
-				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
-					t.Log("query exited", err)
-					return nil
-				}
-				return err
-			}
-			seq := seqV.(margaret.Seq)
-			msgV, err := botA.RootLog.Get(seq)
-			if err != nil {
-				return err
-			}
-			msg := msgV.(ssb.Message)
-
-			t.Log("rxFeedC", seq.Seq(), "msgSeq", msg.Seq(), "key", msg.Key().Ref())
-			gotMsg <- msg.Seq()
-		}
-	})
+	botgroup.Go(makeChanWaiter(ctx, seqSrc, gotMsg))
 
 	t.Log("starting live test")
 
@@ -187,7 +204,7 @@ func TestFeedsLiveSimpleThree(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		seq, err := botC.PublishLog.Append("some test msg")
 		r.NoError(err)
-		r.Equal(margaret.BaseSeq(9+i), seq)
+		r.Equal(margaret.BaseSeq(15+i), seq)
 
 		// received new message?
 		select {
@@ -195,7 +212,7 @@ func TestFeedsLiveSimpleThree(t *testing.T) {
 			t.Errorf("timeout %d....", i)
 		case seq, ok := <-gotMsg:
 			r.True(ok, "%d: gotMsg closed", i)
-			a.EqualValues(margaret.BaseSeq(6+i), seq, "wrong seq on try %d", i)
+			a.EqualValues(margaret.BaseSeq(7+i), seq, "wrong seq on try %d", i)
 		}
 	}
 
@@ -422,7 +439,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 		msgCnt += 2
 	}
 
-	const extraTestMessages = 25
+	const extraTestMessages = 3
 	msgCnt += extraTestMessages
 	for n := extraTestMessages; n > 0; n-- {
 		tMsg := fmt.Sprintf("some pre-setup msg %d", n)
@@ -441,9 +458,6 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 				err := botX.Network.Connect(ctx, botY.Network.GetListenAddr())
 				r.NoError(err)
 			}
-			time.Sleep(time.Second * 2)
-			botX.Network.GetConnTracker().CloseAll()
-			time.Sleep(time.Second / 2)
 		}
 		t.Log(z, "initialSync..")
 		time.Sleep(1 * time.Second)
@@ -505,7 +519,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 10; i++ {
 		tMsg := fmt.Sprintf("some fresh msg %d", i)
 		seq, err := botA.PublishLog.Append(tMsg)
 		r.NoError(err)
@@ -521,7 +535,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 				r.NoError(err)
 				goon.Dump(st)
 			case seq := <-bChan:
-				a.EqualValues(int(seqOfFeedA)+i, seq, "botB%20d: wrong seq", bI)
+				a.EqualValues(int(seqOfFeedA+2)+i, seq, "botB%02d: wrong seq", bI)
 			}
 		}
 	}
@@ -536,4 +550,25 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 		r.NoError(bot.Close())
 	}
 	r.NoError(botgroup.Wait())
+}
+
+func makeChanWaiter(ctx context.Context, src luigi.Source, gotMsg chan<- int64) func() error {
+	return func() error {
+		defer close(gotMsg)
+		for {
+			v, err := src.Next(ctx)
+			if err != nil {
+				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
+					fmt.Println("query exited", err)
+					return nil
+				}
+				return err
+			}
+
+			msg := v.(ssb.Message)
+
+			fmt.Println("rxFeed", msg.Author().Ref()[1:5], "msgSeq", msg.Seq(), "key", msg.Key().Ref())
+			gotMsg <- msg.Seq()
+		}
+	}
 }

@@ -17,6 +17,7 @@ import (
 	"go.cryptoscope.co/luigi"
 	"go.cryptoscope.co/margaret"
 	"go.cryptoscope.co/margaret/multilog"
+
 	"go.cryptoscope.co/ssb"
 	"go.cryptoscope.co/ssb/internal/luigiutils"
 	"go.cryptoscope.co/ssb/internal/mutil"
@@ -76,12 +77,15 @@ func (m *FeedPushManager) pour(ctx context.Context, val interface{}, err error) 
 		return err
 	}
 
-	author := val.(margaret.SeqWrapper).Value().(ssb.Message).Author()
+	sw := val.(margaret.SeqWrapper)
+	ssbMsg := sw.Value().(ssb.Message)
+	author := ssbMsg.Author()
 	sink, ok := m.liveFeeds[author.Ref()]
 	if !ok {
 		return nil
 	}
-	return sink.Pour(ctx, val)
+
+	return sink.Pour(ctx, ssbMsg)
 }
 
 func (m *FeedPushManager) serveLiveFeeds() {
@@ -209,9 +213,33 @@ func (m *FeedPushManager) CreateStreamHistory(
 		return errors.Wrap(err, "userLog sequence")
 	}
 
+	// setup desired sink mapping
+	switch arg.ID.Algo {
+	case ssb.RefAlgoFeedSSB1:
+		sink = transform.NewKeyValueWrapper(sink, arg.Keys)
+
+	case ssb.RefAlgoFeedGabby:
+		switch {
+		case arg.AsJSON:
+			sink = transform.NewKeyValueWrapper(sink, arg.Keys)
+		default:
+			sink = luigiutils.NewGabbyStreamSink(sink)
+		}
+	default:
+		return errors.Errorf("unsupported feed format.")
+	}
+
 	if arg.Seq != 0 {
 		arg.Seq--             // our idx is 0 ed
 		if arg.Seq > latest { // more than we got
+			if arg.Live {
+				return m.addLiveFeed(
+					ctx, sink,
+					arg.ID.Ref(),
+					latest,
+					liveLimit(arg, latest),
+				)
+			}
 			return errors.Wrap(sink.Close(), "pour: failed to close")
 		}
 	}
@@ -229,21 +257,6 @@ func (m *FeedPushManager) CreateStreamHistory(
 	)
 	if err != nil {
 		return errors.Wrapf(err, "invalid user log query")
-	}
-
-	switch arg.ID.Algo {
-	case ssb.RefAlgoFeedSSB1:
-		sink = transform.NewKeyValueWrapper(sink, arg.Keys)
-
-	case ssb.RefAlgoFeedGabby:
-		switch {
-		case arg.AsJSON:
-			sink = transform.NewKeyValueWrapper(sink, arg.Keys)
-		default:
-			sink = luigiutils.NewGabbyStreamSink(sink)
-		}
-	default:
-		return errors.Errorf("unsupported feed format.")
 	}
 
 	sent := 0
