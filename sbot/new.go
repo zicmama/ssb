@@ -288,13 +288,13 @@ func initSbot(s *Sbot) (*Sbot, error) {
 		kitlog.With(log, "plugin", "gossip/hist"),
 		s.KeyPair.Id, s.RootLog, uf, s.GraphBuilder,
 		histOpts...)
-	s.public.Register(hist)
+	s.public.Register(&hist)
 
 	s.master.Register(get.New(s))
 
 	// raw log plugins
 	s.master.Register(rawread.NewRXLog(s.RootLog)) // createLogStream
-	s.master.Register(hist)                        // createHistoryStream
+	s.master.Register(&hist)                       // createHistoryStream
 
 	s.master.Register(replicate.NewPlug(uf))
 

@@ -142,34 +142,20 @@ func NewHist(
 	return histPlugin{h}
 }
 
-type plugin struct {
-	h *handler
+type plugin struct{ h *handler }
+
+func (plugin) Name() string              { return "gossip" }
+func (plugin) Method() muxrpc.Method     { return muxrpc.Method{"gossip"} }
+func (p plugin) Handler() muxrpc.Handler { return p.h }
+
+type histPlugin struct{ h *handler }
+
+func (hp histPlugin) Name() string       { return "createHistoryStream" }
+func (histPlugin) Method() muxrpc.Method { return muxrpc.Method{"createHistoryStream"} }
+
+func (*histPlugin) HandleConnect(ctx context.Context, edp muxrpc.Endpoint) {}
+func (h *histPlugin) HandleCall(ctx context.Context, req *muxrpc.Request, edp muxrpc.Endpoint) {
+	h.h.HandleCall(ctx, req, edp)
 }
 
-func (plugin) Name() string { return "gossip" }
-
-func (plugin) Method() muxrpc.Method {
-	return muxrpc.Method{"gossip"}
-}
-
-func (p plugin) Handler() muxrpc.Handler {
-	return p.h
-}
-
-type histPlugin struct {
-	h *handler
-}
-
-func (hp histPlugin) Name() string { return "createHistoryStream" }
-
-func (histPlugin) Method() muxrpc.Method {
-	return muxrpc.Method{"createHistoryStream"}
-}
-
-type ignoreConnectHandler struct{ muxrpc.Handler }
-
-func (ignoreConnectHandler) HandleConnect(ctx context.Context, edp muxrpc.Endpoint) {}
-
-func (hp histPlugin) Handler() muxrpc.Handler {
-	return ignoreConnectHandler{hp.h}
-}
+func (hp *histPlugin) Handler() muxrpc.Handler { return hp }
