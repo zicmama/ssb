@@ -262,6 +262,9 @@ func (m *FeedPushManager) CreateStreamHistory(
 	}
 
 	if arg.Live {
+		if arg.Reverse {
+			return errors.New("gossip: cant be both live and reverse query")
+		}
 		return m.addLiveFeed(
 			ctx, sink,
 			arg.ID.Ref(),

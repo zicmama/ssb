@@ -4,7 +4,6 @@ package luigiutils
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/pkg/errors"
 	"go.cryptoscope.co/muxrpc"
@@ -49,7 +48,7 @@ func (f *MultiSink) Register(
 	until int64,
 ) error {
 	f.sinks = append(f.sinks, sink)
-	fmt.Printf("DEBUG sink type:%T\n", sink)
+	// fmt.Printf("DEBUG sink type:%T\n", sink)
 	f.ctxs[sink] = ctx
 	f.until[sink] = until
 	return nil
