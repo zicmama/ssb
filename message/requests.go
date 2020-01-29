@@ -89,7 +89,7 @@ type CommonArgs struct {
 }
 
 type StreamArgs struct {
-	Limit int64 `json:"limit"`
+	Limit int64 `json:"limit,omitempty"`
 
 	Reverse bool `json:"reverse,omitempty"`
 }
