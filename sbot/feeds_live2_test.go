@@ -46,21 +46,26 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	}
 
 	theBots := []*Sbot{}
-	n := 4
+	n := 7
 	for i := 0; i < n; i++ {
 		botI := makeNamedTestBot(t, strconv.Itoa(i), netOpts)
 		botgroup.Go(bs.Serve(botI))
 		theBots = append(theBots, botI)
 	}
 
-	followMatrix := []int{
-		0, 1, 1, 1,
-		1, 0, 1, 1,
-		1, 1, 0, 1,
-		1, 1, 1, 0,
+	// all one expect diagonal
+	followMatrix := make([]int, n*n)
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			if i == j {
+				continue
+			}
+			x := i*n + j
+			followMatrix[x] = 1
+		}
 	}
 
-	msgCnt := int64(0)
+	msgCnt := 0
 	for i := 0; i < n; i++ {
 		for j := 0; j < n; j++ {
 			x := i*n + j
@@ -72,33 +77,45 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 			if fQ == 1 {
 				msgCnt++
 				t.Log(i, "follows", j)
-				_, err := botI.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
-					Contact: botJ.KeyPair.Id,
-				})
+				_, err := botI.PublishLog.Append(ssb.NewContactFollow(botJ.KeyPair.Id))
 				r.NoError(err)
 			}
 		}
 	}
 
-	// initialSync
-	for z := 1 + n/2; z >= 0; z-- {
-		for m := n - 1; m >= 0; m-- {
-			for i := 0; i < n; i++ {
-				if i == m {
+initialSync:
+	for z := 3; z > 0; z-- {
+
+		for bI, botX := range theBots {
+			for bJ, botY := range theBots {
+				if bI == bJ {
 					continue
 				}
-				err := theBots[m].Network.Connect(ctx, theBots[i].Network.GetListenAddr())
+				err := botX.Network.Connect(ctx, botY.Network.GetListenAddr())
 				r.NoError(err)
 			}
-		}
-		t.Log(z, "connect..")
-		time.Sleep(2 * time.Second)
-		for i, bot := range theBots {
-			st, err := bot.Status()
-			r.NoError(err)
-			if rootSeq := st.Root.Seq(); rootSeq != msgCnt-1 {
-				t.Log(i, ": seq", rootSeq)
+
+			time.Sleep(time.Second * 2) // settle sync
+			complete := 0
+			for i, bot := range theBots {
+				st, err := bot.RootLog.Seq().Value()
+				r.NoError(err)
+				if rootSeq := int(st.(margaret.Seq).Seq()); rootSeq == msgCnt-1 {
+					complete++
+				} else {
+					if rootSeq > msgCnt-1 {
+						err = bot.FSCK(nil, FSCKModeSequences)
+						t.Log(err)
+						t.Fatal("bot", i, "has more messages then expected!")
+					}
+					t.Log("init sync delay on bot", i, ": seq", rootSeq)
+				}
 			}
+			if len(theBots) == complete {
+				t.Log("initsync done")
+				break initialSync
+			}
+			t.Log("continuing initialSync..")
 		}
 	}
 
@@ -118,8 +135,6 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 		t.Fatal()
 	}
 
-	t.Log("initial sync done")
-
 	// dial up a chain
 	for i := 0; i < n-1; i++ {
 		botI := theBots[i]
@@ -137,10 +152,9 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	r.NoError(err)
 	seqv, err := feedOfLastBot.Seq().Value()
 	r.NoError(err)
-	wantSeq := margaret.BaseSeq(2)
+	wantSeq := margaret.BaseSeq(n - 2)
 	r.EqualValues(wantSeq, seqv, "after connect check")
 
-	// setup live listener
 	// setup live listener
 	gotMsg := make(chan ssb.Message)
 
@@ -156,14 +170,14 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	for i := 0; i < testMessageCount; i++ {
 		rxSeq, err := theBots[n-1].PublishLog.Append(fmt.Sprintf("some test msg:%02d", n))
 		r.NoError(err)
-		a.EqualValues(margaret.BaseSeq(12+i), rxSeq)
+		a.EqualValues(margaret.BaseSeq(msgCnt+i), rxSeq)
 
 		// received new message?
 		select {
 		case <-time.After(2 * time.Second):
 			t.Errorf("timeout %d....", i)
 		case msg := <-gotMsg:
-			a.EqualValues(margaret.BaseSeq(4+i), msg.Seq(), "wrong seq")
+			a.EqualValues(margaret.BaseSeq(n+i), msg.Seq(), "wrong seq")
 		}
 	}
 
