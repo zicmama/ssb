@@ -238,7 +238,7 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 	conn, err := n.applyConnWrappers(origConn)
 	if err != nil {
 		origConn.Close()
-		n.log.Log("msg", "node/Serve: failed to wrap connection", "err", err)
+		level.Error(n.log).Log("msg", "node/Serve: failed to wrap connection", "err", err)
 		return
 	}
 
@@ -255,12 +255,12 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 	ctx, cancel := ctxutils.WithError(ctx, fmt.Errorf("handle conn returned"))
 
 	defer func() {
+		cancel()
 		n.connTracker.OnClose(conn)
 		conn.Close()
 		origConn.Close()
 		// connClose = errors.Wrap(, "direct conn closing")
 		// level.Debug(n.log).Log("event", "conn-closing", "edpTerm", edpTerm, "connClose", connClose, "durr", durr)
-		cancel()
 	}()
 
 	if n.evtCtr != nil {
@@ -269,10 +269,10 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 
 	h, err := n.opts.MakeHandler(conn)
 	if err != nil {
-		n.log.Log("conn", "mkHandler", "err", err, "peer", conn.RemoteAddr())
 		if _, ok := errors.Cause(err).(*ssb.ErrOutOfReach); ok {
 			return // ignore silently
 		}
+		level.Warn(n.log).Log("conn", "mkHandler", "err", err, "peer", conn.RemoteAddr())
 		return
 	}
 
@@ -293,7 +293,7 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 	srv := edp.(muxrpc.Server)
 
 	if err := srv.Serve(ctx); err != nil {
-		// level.Debug(n.log).Log("conn", "serve", "err", err)
+		level.Debug(n.log).Log("conn", "serve", "err", err)
 	}
 	n.removeRemote(edp)
 }

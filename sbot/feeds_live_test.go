@@ -1,6 +1,7 @@
 package sbot
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -24,17 +25,46 @@ import (
 	"go.cryptoscope.co/ssb/network"
 )
 
-var testMessageCount = 128
+var (
+	// how many messages will be published (if -short isnt used)
+	testMessageCount = 128
+
+	// a running tally of how many times makeNamedTestBot() was called
+	// is also used to alternate between feed formats per bot
+	botCnt byte = 0
+)
+
+func init() {
+	if time.Now().Unix()%2 == 0 {
+		// shifts the keypair order around each time
+		// so the order is shifted sometimes (botA is GG format instead of legacy sometimes)
+		botCnt = 1
+	}
+}
 
 func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
 	r := require.New(t)
 	if testing.Short() {
 		testMessageCount = 25
 	}
+
 	testPath := filepath.Join("testrun", t.Name(), "bot-"+name)
+
+	// bob is the one with the other feed format
+
+	// make keys deterministic each run
+	seed := bytes.Repeat([]byte{botCnt}, 32)
+	botsKey, err := ssb.NewKeyPair(bytes.NewReader(seed))
+	r.NoError(err)
+
+	if botCnt%2 == 0 {
+		botsKey.Id.Algo = ssb.RefAlgoFeedGabby
+	}
+	botCnt++
 
 	mainLog := testutils.NewRelativeTimeLogger(nil) //ioutil.Discard)
 	botOptions := append(opts,
+		WithKeyPair(botsKey),
 		WithInfo(log.With(mainLog, "bot", name)),
 		WithRepoPath(testPath),
 		WithListenAddr(":0"),
