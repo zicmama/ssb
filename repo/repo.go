@@ -150,7 +150,7 @@ func OpenMultiLog(r Interface, name string, f multilog.Func) (multilog.MultiLog,
 		}
 
 		err = luigi.Pump(ctx, mlogSink, src)
-		if err == ssb.ErrShuttingDown {
+		if err == ssb.ErrShuttingDown || errors.Cause(err) == context.Canceled {
 			return nil
 		}
 
