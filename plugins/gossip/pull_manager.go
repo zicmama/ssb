@@ -30,7 +30,7 @@ type pullManager struct {
 	receiveLog margaret.Log
 	append     luigi.Sink
 
-	verifyMu    sync.Mutex
+	verifyMu    *sync.Mutex
 	verifySinks map[string]luigi.Sink
 
 	hops    int
@@ -47,13 +47,13 @@ type rxSink struct {
 
 func (snk *rxSink) Pour(ctx context.Context, val interface{}) error {
 	snk.mu.Lock()
-	rxSeq, err := snk.append.Append(val)
+	_, err := snk.append.Append(val)
 	if err != nil {
 		snk.mu.Unlock()
 		return errors.Wrap(err, "failed to append verified message to rootLog")
 	}
-	msg := val.(ssb.Message)
-	level.Warn(snk.logger).Log("receivedAsSeq", rxSeq.Seq(), "msgSeq", msg.Seq(), "author", msg.Author().Ref()[1:5])
+	// msg := val.(ssb.Message)
+	// level.Warn(snk.logger).Log("receivedAsSeq", rxSeq.Seq(), "msgSeq", msg.Seq(), "author", msg.Author().Ref()[1:5])
 	snk.mu.Unlock()
 	return nil
 }
@@ -61,8 +61,6 @@ func (snk *rxSink) Pour(ctx context.Context, val interface{}) error {
 func (snk *rxSink) Close() error { return nil }
 
 func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) {
-	pull.verifyMu.Lock()
-	defer pull.verifyMu.Unlock()
 	hops := pull.gb.Hops(&pull.self, pull.hops)
 	if hops == nil {
 		level.Warn(pull.logger).Log("event", "nil hops set")
@@ -75,10 +73,8 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 		return
 	}
 
-	var latestSeq margaret.Seq
-	var latestMsg ssb.Message
 	for _, ref := range hopsLst {
-		latestSeq, latestMsg, err = pull.getLatestSeq(ref)
+		latestSeq, latestMsg, err := pull.getLatestSeq(ref)
 		if err != nil {
 			level.Error(pull.logger).Log("event", "failed to get sequence for feed", "err", err, "fr", ref.Ref()[1:5])
 			return
@@ -94,14 +90,14 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 		}
 
 		// one sink per feed
-
+		pull.verifyMu.Lock()
 		verifySink, has := pull.verifySinks[ref.Ref()]
 		if !has {
 			verifySink = message.NewVerifySink(ref, latestSeq, latestMsg, pull.append, pull.hmacKey)
 			verifySink = lockedSink(verifySink)
 			pull.verifySinks[ref.Ref()] = verifySink
 		}
-		// pull.verifyMu.Unlock()
+		pull.verifyMu.Unlock()
 
 		// unwrap the codec packet for the SunkenSource call and forward it to the verifySink
 		storeSnk := luigi.FuncSink(func(ctx context.Context, val interface{}, err error) error {
@@ -128,7 +124,7 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 		})
 
 		err = edp.SunkenSource(ctx, storeSnk, method, q)
-		if err != nil {
+		if err != nil && !muxrpc.IsSinkClosed(err) {
 			err = errors.Wrapf(err, "fetchFeed(%s:%d) failed to create source", ref.Ref(), latestSeq.Seq())
 			level.Error(pull.logger).Log("event", "create source", "err", err)
 			return

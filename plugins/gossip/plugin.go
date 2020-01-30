@@ -5,6 +5,7 @@ package gossip
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/cryptix/go/logging"
 	"github.com/go-kit/kit/metrics"
@@ -80,6 +81,7 @@ func New(
 			append: rootLog,
 		},
 
+		verifyMu:    &sync.Mutex{},
 		verifySinks: make(map[string]luigi.Sink),
 
 		hops:    h.hopCount,
