@@ -42,7 +42,6 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	netOpts := []Option{
 		WithAppKey(appKey),
 		WithHMACSigning(hmacKey),
-		// WithHops(3),
 	}
 
 	theBots := []*Sbot{}
@@ -83,41 +82,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 		}
 	}
 
-initialSync:
-	for z := 3; z > 0; z-- {
-
-		for bI, botX := range theBots {
-			for bJ, botY := range theBots {
-				if bI == bJ {
-					continue
-				}
-				err := botX.Network.Connect(ctx, botY.Network.GetListenAddr())
-				r.NoError(err)
-			}
-
-			time.Sleep(time.Second * 2) // settle sync
-			complete := 0
-			for i, bot := range theBots {
-				st, err := bot.RootLog.Seq().Value()
-				r.NoError(err)
-				if rootSeq := int(st.(margaret.Seq).Seq()); rootSeq == msgCnt-1 {
-					complete++
-				} else {
-					if rootSeq > msgCnt-1 {
-						err = bot.FSCK(nil, FSCKModeSequences)
-						t.Log(err)
-						t.Fatal("bot", i, "has more messages then expected!")
-					}
-					t.Log("init sync delay on bot", i, ": seq", rootSeq)
-				}
-			}
-			if len(theBots) == complete {
-				t.Log("initsync done")
-				break initialSync
-			}
-			t.Log("continuing initialSync..")
-		}
-	}
+	initialSync(t, theBots, msgCnt)
 
 	// check and disconnect
 	var broken = false
