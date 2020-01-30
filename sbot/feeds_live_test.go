@@ -24,9 +24,13 @@ import (
 	"go.cryptoscope.co/ssb/network"
 )
 
+var testMessageCount = 512
+
 func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
 	r := require.New(t)
-
+	if testing.Short() {
+		testMessageCount = 25
+	}
 	testPath := filepath.Join("testrun", t.Name(), "bot-"+name)
 
 	mainLog := testutils.NewRelativeTimeLogger(nil) //ioutil.Discard)
@@ -103,16 +107,14 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 	r.NoError(err)
 	_, err = botD.PublishLog.Append(ssb.NewContactFollow(botC.KeyPair.Id))
 	r.NoError(err)
+	var msgCnt = 4*3 - 1
 
-	msgRef, err := botD.PublishLog.Publish("testmsg1")
-	r.NoError(err)
-	t.Log("tst1:", msgRef.Ref())
-	msgRef, err = botD.PublishLog.Publish("testmsg2")
-	r.NoError(err)
-	t.Log("tst2:", msgRef.Ref())
-	msgRef, err = botD.PublishLog.Publish("testmsg3")
-	r.NoError(err)
-	t.Log("tst3:", msgRef.Ref())
+	msgCnt += testMessageCount
+	for n := testMessageCount; n > 0; n-- {
+		tMsg := fmt.Sprintf("some pre-setup msg %d", n)
+		_, err := botD.PublishLog.Append(tMsg)
+		r.NoError(err)
+	}
 
 	// check feed of C is empty on bot A
 	uf, ok := botA.GetMultiLog("userFeeds")
@@ -135,18 +137,16 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 				}
 				err := botX.Network.Connect(ctx, botY.Network.GetListenAddr())
 				r.NoError(err)
-				time.Sleep(time.Second / 3) // TODO: initial race protection
+				time.Sleep(time.Second / 2) // settle sync
 			}
-			time.Sleep(time.Second / 5) // TODO: initial race protection
-			botX.Network.GetConnTracker().CloseAll()
 		}
 
 		complete := 0
 		for i, bot := range theBots {
 			st, err := bot.Status()
 			r.NoError(err)
-			if rootSeq := st.Root.Seq(); rootSeq != 14 {
-				t.Log("init sync delay on bot", i, ": seq", rootSeq)
+			if rootSeq := int(st.Root.Seq()); rootSeq != msgCnt {
+				t.Log("init sync diff on bot", i, ": seq", rootSeq)
 			} else {
 				complete++
 			}
@@ -159,25 +159,28 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 	}
 
 	// check and disconnect
+	var broken = false
 	for i, bot := range theBots {
 		st, err := bot.Status()
 		r.NoError(err)
-		a.EqualValues(14, st.Root.Seq(), "wrong rxSeq on bot %d", i)
+		a.EqualValues(msgCnt, st.Root.Seq(), "wrong rxSeq on bot %d", i)
 		err = bot.FSCK(nil, FSCKModeSequences)
-		a.NoError(err, "FSCK error on bot %d", i)
+		if !a.NoError(err, "FSCK error on bot %d", i) {
+			broken = true
+		}
 		bot.Network.GetConnTracker().CloseAll()
+	}
+	if broken {
+		t.Fatal()
 	}
 
 	// dial up A->B, B->C, C->D
 	err = botA.Network.Connect(ctx, botB.Network.GetListenAddr())
 	r.NoError(err)
-	time.Sleep(time.Second / 2) // TODO: initial race protection
 	err = botB.Network.Connect(ctx, botC.Network.GetListenAddr())
 	r.NoError(err)
-	time.Sleep(time.Second / 2) // TODO: initial race protection
 	err = botC.Network.Connect(ctx, botD.Network.GetListenAddr())
 	r.NoError(err)
-	time.Sleep(time.Second / 2) // TODO: initial race protection
 
 	// did B get feed C?
 	ufOfBotB, ok := botB.GetMultiLog("userFeeds")
@@ -186,12 +189,14 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 	r.NoError(err)
 	seqv, err = feedOfBotDAtB.Seq().Value()
 	r.NoError(err)
-	r.EqualValues(margaret.BaseSeq(5), seqv, "after connect check")
+
+	wantSeq := margaret.BaseSeq(testMessageCount + 2)
+
+	r.EqualValues(wantSeq, seqv, "after connect check on bot B")
 
 	// should now have 5 msgs now (the two contact messages from C on A + 3 tests)
 	seqv, err = feedOfBotD.Seq().Value()
 	r.NoError(err)
-	wantSeq := margaret.BaseSeq(5)
 	r.EqualValues(wantSeq, seqv, "should have all of C's messages")
 
 	// setup live listener
@@ -208,11 +213,12 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 	t.Log("starting live test")
 
 	// now publish on C and let them bubble to A, live without reconnect
-	for i := 0; i < 50; i++ {
+
+	for i := 0; i < testMessageCount; i++ {
 		rxSeq, err := botD.PublishLog.Append("some test msg")
 		r.NoError(err)
 		published := time.Now()
-		r.Equal(margaret.BaseSeq(15+i), rxSeq)
+		r.Equal(margaret.BaseSeq(testMessageCount+12+i), rxSeq)
 
 		// received new message?
 		select {
@@ -220,7 +226,7 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 			t.Errorf("timeout %d....", i)
 		case msg, ok := <-gotMsg:
 			r.True(ok, "%d: gotMsg closed", i)
-			a.EqualValues(margaret.BaseSeq(7+i), msg.Seq(), "wrong seq on try %d", i)
+			a.EqualValues(margaret.BaseSeq(testMessageCount+4+i), msg.Seq(), "wrong seq on try %d", i)
 			t.Log("delay:", time.Since(published))
 		}
 	}
@@ -316,7 +322,7 @@ func TestFeedsLiveSimpleTwo(t *testing.T) {
 
 	err = bob.Network.Connect(ctx, ali.Network.GetListenAddr())
 	r.NoError(err)
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Second / 2)
 
 	uf, ok := bob.GetMultiLog("userFeeds")
 	r.True(ok)
@@ -349,8 +355,10 @@ func TestFeedsLiveSimpleTwo(t *testing.T) {
 		}
 		return nil
 	})
-
-	for i := 0; i < 50; i++ {
+	if testing.Short() {
+		testMessageCount = 25
+	}
+	for i := 0; i < testMessageCount; i++ {
 		seq, err = ali.PublishLog.Append("first msg after connect")
 		r.NoError(err)
 		r.Equal(margaret.BaseSeq(2+i), seq)
@@ -410,7 +418,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 	botgroup.Go(bs.Serve(botI))
 
 	var bLeafs []*Sbot
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 6; i++ {
 		botBi := makeNamedTestBot(t, fmt.Sprintf("B%0d", i), netOpts)
 		botgroup.Go(bs.Serve(botBi))
 		bLeafs = append(bLeafs, botBi)
@@ -424,7 +432,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 	r.NoError(err)
 	_, err = botI.PublishLog.Append(ssb.NewContactFollow(botA.KeyPair.Id))
 	r.NoError(err)
-	var msgCnt int64 = 2
+	var msgCnt = 2
 
 	for i, bot := range bLeafs {
 		_, err := bot.PublishLog.Append(ssb.NewContactFollow(botI.KeyPair.Id))
@@ -434,7 +442,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 		msgCnt += 2
 	}
 
-	const extraTestMessages = 3
+	var extraTestMessages = testMessageCount
 	msgCnt += extraTestMessages
 	for n := extraTestMessages; n > 0; n-- {
 		tMsg := fmt.Sprintf("some pre-setup msg %d", n)
@@ -452,17 +460,13 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 				}
 				err := botX.Network.Connect(ctx, botY.Network.GetListenAddr())
 				r.NoError(err)
-				time.Sleep(time.Second / 3) // TODO: initial race protection
 			}
-			time.Sleep(time.Second / 5) // TODO: initial race protection
-			botX.Network.GetConnTracker().CloseAll()
-
 		}
 		complete := 0
 		for i, bot := range theBots {
 			st, err := bot.RootLog.Seq().Value()
 			r.NoError(err)
-			if rootSeq := st.(margaret.Seq).Seq(); rootSeq != msgCnt-1 {
+			if rootSeq := int(st.(margaret.Seq).Seq()); rootSeq != msgCnt-1 {
 				t.Log("init sync delay on bot", i, ": seq", rootSeq)
 			} else {
 				complete++
@@ -521,15 +525,14 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 	for i, botX := range append(bLeafs, botA) {
 		err := botX.Network.Connect(ctx, botI.Network.GetListenAddr())
 		r.NoError(err, "connect bot%d>I failed", i)
-		// time.Sleep(time.Second / 3) // TODO: initial race protection
 	}
 
-	for i := 0; i < 50; i++ {
+	for i := 0; i < testMessageCount; i++ {
 		tMsg := fmt.Sprintf("some fresh msg %d", i)
 		seq, err := botA.PublishLog.Append(tMsg)
 		r.NoError(err)
 		published := time.Now()
-		r.EqualValues(msgCnt+int64(i), seq, "new msg %d", i)
+		r.EqualValues(msgCnt+i, seq, "new msg %d", i)
 
 		// received new message?
 		// TODO: reflect on slice of chans for less sleep
@@ -550,9 +553,9 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 	// cleanup
 	cancel()
 	time.Sleep(1 * time.Second)
-	for _, bot := range append(bLeafs, botA, botI) {
+	for bI, bot := range append(bLeafs, botA, botI) {
 		err = bot.FSCK(nil, FSCKModeSequences)
-		a.NoError(err)
+		a.NoError(err, "botB%02d fsck", bI)
 		bot.Shutdown()
 		r.NoError(bot.Close())
 	}
