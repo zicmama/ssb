@@ -133,22 +133,6 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 	theBots := []*Sbot{botA, botB, botC, botD}
 	initialSync(t, theBots, msgCnt)
 
-	// check and disconnect
-	var broken = false
-	for i, bot := range theBots {
-		st, err := bot.Status()
-		r.NoError(err)
-		a.EqualValues(msgCnt-1, st.Root.Seq(), "wrong rxSeq on bot %d", i)
-		err = bot.FSCK(nil, FSCKModeSequences)
-		if !a.NoError(err, "FSCK error on bot %d", i) {
-			broken = true
-		}
-		bot.Network.GetConnTracker().CloseAll()
-	}
-	if broken {
-		t.Fatal()
-	}
-
 	// dial up A->B, B->C, C->D
 	err = botA.Network.Connect(ctx, botB.Network.GetListenAddr())
 	r.NoError(err)
@@ -417,22 +401,6 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 
 	initialSync(t, theBots, msgCnt)
 
-	// check and disconnect
-	var broken = false
-	for i, bot := range theBots {
-		sv, err := bot.RootLog.Seq().Value()
-		r.NoError(err)
-		a.EqualValues(msgCnt-1, sv.(margaret.Seq).Seq(), "wrong rxSeq on bot %d", i)
-		err = bot.FSCK(nil, FSCKModeSequences)
-		if !a.NoError(err, "FSCK error on bot %d", i) {
-			broken = true
-		}
-		bot.Network.GetConnTracker().CloseAll()
-	}
-	if broken {
-		t.Fatal()
-	}
-
 	seqOfFeedA := margaret.BaseSeq(extraTestMessages) // N pre messages +1 contact (0 indexed)
 	var botBreceivedNewMessage []<-chan ssb.Message
 	for i, bot := range bLeafs {
@@ -503,6 +471,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 func initialSync(t *testing.T, theBots []*Sbot, expectedMsgCount int) {
 	ctx := context.TODO()
 	r := require.New(t)
+	a := assert.New(t)
 
 initialSync:
 	for z := 3; z > 0; z-- {
@@ -517,7 +486,10 @@ initialSync:
 			}
 
 			time.Sleep(time.Second * 2) // settle sync
-			complete := 0
+			var (
+				complete = 0
+				broken   = false
+			)
 			for i, bot := range theBots {
 				st, err := bot.RootLog.Seq().Value()
 				r.NoError(err)
@@ -527,12 +499,16 @@ initialSync:
 					if rootSeq > expectedMsgCount-1 {
 						err = bot.FSCK(nil, FSCKModeSequences)
 						if err != nil {
+							broken = true
 							t.Error(err)
 						}
 						t.Fatal("bot", i, "has more messages then expected!")
 					}
 					t.Log("init sync delay on bot", i, ": seq", rootSeq)
 				}
+			}
+			if broken {
+				t.Fatal()
 			}
 			if len(theBots) == complete {
 				t.Log("initsync done")
@@ -541,6 +517,17 @@ initialSync:
 			t.Log("continuing initialSync..")
 		}
 	}
+
+	// check fsck,sequences and and disconnect
+	for i, bot := range theBots {
+		sv, err := bot.RootLog.Seq().Value()
+		r.NoError(err)
+		a.EqualValues(expectedMsgCount-1, sv.(margaret.Seq).Seq(), "wrong rxSeq on bot %d", i)
+		err = bot.FSCK(nil, FSCKModeSequences)
+		r.NoError(err, "FSCK error on bot %d", i)
+		bot.Network.GetConnTracker().CloseAll()
+	}
+
 }
 
 func makeChanWaiter(ctx context.Context, src luigi.Source, gotMsg chan<- ssb.Message) func() error {

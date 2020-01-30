@@ -283,7 +283,7 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 	r.NoError(botgroup.Wait())
 }
 
-func XTestFeedsLiveNetworkDiamond(t *testing.T) {
+func TestFeedsLiveNetworkDiamond(t *testing.T) {
 	r := require.New(t)
 	a := assert.New(t)
 	os.RemoveAll(filepath.Join("testrun", t.Name()))
@@ -308,10 +308,8 @@ func XTestFeedsLiveNetworkDiamond(t *testing.T) {
 
 	theBots := []*Sbot{}
 	for n := 0; n < 6; n++ {
-
 		botN := makeNamedTestBot(t, strconv.Itoa(n), netOpts)
 		botgroup.Go(bs.Serve(botN))
-
 		theBots = append(theBots, botN)
 	}
 
@@ -345,43 +343,7 @@ func XTestFeedsLiveNetworkDiamond(t *testing.T) {
 		}
 	}
 
-	// initial sync
-	// initialSyncCtx, initialSync := context.WithCancel(ctx)
-	for z := 6; z >= 0; z-- {
-		// connectCtx, firstSync := context.WithCancel(ctx)
-
-		for n := 5; n >= 0; n-- {
-			for i := 0; i < 6; i++ {
-				if i == n {
-					continue
-				}
-				err := theBots[n].Network.Connect(ctx, theBots[i].Network.GetListenAddr())
-				r.NoError(err)
-			}
-		}
-		t.Log(z, "connect..")
-		time.Sleep(2 * time.Second)
-		for i, bot := range theBots {
-			st, err := bot.Status()
-			r.NoError(err)
-			if rootSeq := st.Root.Seq(); rootSeq != 21 {
-				t.Log(i, ": seq", rootSeq)
-			}
-		}
-		// firstSync()
-	}
-
-	// initialSync()
-	for i, bot := range theBots {
-		st, err := bot.Status()
-		r.NoError(err)
-		a.EqualValues(21, st.Root.Seq(), "wrong seq on %d", i)
-		bot.Network.GetConnTracker().CloseAll()
-		// g, err := bot.GraphBuilder.Build()
-		// r.NoError(err)
-		// err = g.RenderSVGToFile(filepath.Join("testrun", t.Name(), fmt.Sprintf("bot%d.svg", i)))
-		// r.NoError(err)
-	}
+	initialSync(t, theBots, followMsgs)
 
 	// setup connections
 	connectMatrix := []int{
