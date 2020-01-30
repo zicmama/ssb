@@ -10,10 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.cryptoscope.co/luigi"
 	"go.cryptoscope.co/margaret"
 	"golang.org/x/sync/errgroup"
 
@@ -83,22 +81,6 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	}
 
 	initialSync(t, theBots, msgCnt)
-
-	// check and disconnect
-	var broken = false
-	for i, bot := range theBots {
-		sv, err := bot.RootLog.Seq().Value()
-		r.NoError(err)
-		a.EqualValues(msgCnt-1, sv.(margaret.Seq).Seq(), "wrong rxSeq on bot %d", i)
-		err = bot.FSCK(nil, FSCKModeSequences)
-		if !a.NoError(err, "FSCK error on bot %d", i) {
-			broken = true
-		}
-		bot.Network.GetConnTracker().CloseAll()
-	}
-	if broken {
-		t.Fatal()
-	}
 
 	// dial up a chain
 	for i := 0; i < n-1; i++ {
@@ -360,7 +342,6 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 
 			x := i*6 + j
 			fQ := connectMatrix[x]
-			// t.Log(i, j, fQ)
 
 			botI := theBots[i]
 			botJ := theBots[j]
@@ -379,35 +360,19 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 	r.True(ok)
 	feedOfBotC, err := uf.Get(theBots[5].KeyPair.Id.StoredAddr())
 	r.NoError(err)
-	// setup live listener
-	gotMsg := make(chan int64)
 
-	seqSrc, err := feedOfBotC.Query(
+	// setup live listener
+	gotMsg := make(chan ssb.Message)
+
+	seqSrc, err := mutil.Indirect(theBots[0].RootLog, feedOfBotC).Query(
 		margaret.Gte(margaret.BaseSeq(3)),
 		margaret.Live(true))
 	r.NoError(err)
 
-	botgroup.Go(func() error {
-		for {
-			seqV, err := seqSrc.Next(ctx)
-			t.Log(err, seqV)
-			if err != nil {
-				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
-					break
-				}
-				return err
-			}
-
-			seq := seqV.(margaret.Seq)
-			info.Log("rxFeedC", seq.Seq())
-			// TODO: use makeChanWaiter
-			gotMsg <- seq.Seq()
-		}
-		return nil
-	})
+	botgroup.Go(makeChanWaiter(ctx, seqSrc, gotMsg))
 
 	// now publish on C and let them bubble to A, live without reconnect
-	for i := 0; i < 5; i++ {
+	for i := 0; i < testMessageCount; i++ {
 		tMsg := fmt.Sprintf("some test msg %d", i)
 		seq, err := theBots[5].PublishLog.Append(tMsg)
 		r.NoError(err)
@@ -418,8 +383,8 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 		select {
 		case <-time.After(3 * time.Second):
 			t.Errorf("timeout %d....", i)
-		case seq := <-gotMsg:
-			a.EqualValues(margaret.BaseSeq(3+i), seq, "wrong seq")
+		case msg := <-gotMsg:
+			a.EqualValues(margaret.BaseSeq(4+i), msg.Seq(), "wrong seq")
 		}
 	}
 
