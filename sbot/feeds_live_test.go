@@ -24,7 +24,7 @@ import (
 	"go.cryptoscope.co/ssb/network"
 )
 
-var testMessageCount = 512
+var testMessageCount = 128
 
 func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
 	r := require.New(t)
@@ -46,6 +46,8 @@ func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
 	return theBot
 }
 
+// This test creates a chain between for peers: A<>B<>C<>D
+// D publishes messages and they need to reach A before
 func TestFeedsLiveSimpleFour(t *testing.T) {
 	r := require.New(t)
 	a := assert.New(t)
@@ -329,32 +331,22 @@ func TestFeedsLiveSimpleTwo(t *testing.T) {
 	alisLog, err := uf.Get(ali.KeyPair.Id.StoredAddr())
 	r.NoError(err)
 
+	wantSeq := margaret.BaseSeq(0)
 	seqv, err := alisLog.Seq().Value()
 	r.NoError(err)
-	a.Equal(margaret.BaseSeq(0), seqv, "after connect check")
+	a.Equal(wantSeq, seqv, "after connect check")
 
 	// setup live listener
-	gotMsg := make(chan int64)
+	gotMsg := make(chan ssb.Message)
 
-	seqSrc, err := alisLog.Query(margaret.Gte(margaret.BaseSeq(1)), margaret.Live(true))
+	seqSrc, err := mutil.Indirect(bob.RootLog, alisLog).Query(
+		margaret.Gt(wantSeq),
+		margaret.Live(true),
+	)
 	r.NoError(err)
 
-	botgroup.Go(func() error {
-		for {
-			seqV, err := seqSrc.Next(ctx)
-			if err != nil {
-				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
-					break
-				}
-				return err
-			}
+	botgroup.Go(makeChanWaiter(ctx, seqSrc, gotMsg))
 
-			seq := seqV.(margaret.Seq)
-			mainLog.Log("onQuery", seq.Seq())
-			gotMsg <- seq.Seq()
-		}
-		return nil
-	})
 	if testing.Short() {
 		testMessageCount = 25
 	}
@@ -368,7 +360,7 @@ func TestFeedsLiveSimpleTwo(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Errorf("timeout %d....", i)
 		case seq := <-gotMsg:
-			a.EqualValues(margaret.BaseSeq(2+i), seq, "wrong seq")
+			a.EqualValues(margaret.BaseSeq(2+i), seq.Seq(), "wrong seq")
 		}
 	}
 
@@ -450,7 +442,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 		r.NoError(err)
 	}
 
-	// initialSync
+initialSync:
 	for z := 3; z > 0; z-- {
 
 		for bI, botX := range theBots {
@@ -461,37 +453,45 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 				err := botX.Network.Connect(ctx, botY.Network.GetListenAddr())
 				r.NoError(err)
 			}
-		}
-		complete := 0
-		for i, bot := range theBots {
-			st, err := bot.RootLog.Seq().Value()
-			r.NoError(err)
-			if rootSeq := int(st.(margaret.Seq).Seq()); rootSeq != msgCnt-1 {
-				t.Log("init sync delay on bot", i, ": seq", rootSeq)
-			} else {
-				complete++
+
+			time.Sleep(time.Second * 2) // settle sync
+			complete := 0
+			for i, bot := range theBots {
+				st, err := bot.RootLog.Seq().Value()
+				r.NoError(err)
+				if rootSeq := int(st.(margaret.Seq).Seq()); rootSeq == msgCnt-1 {
+					complete++
+				} else {
+					if rootSeq > msgCnt-1 {
+						err = bot.FSCK(nil, FSCKModeSequences)
+						t.Log(err)
+						t.Fatal("bot", i, "has more messages then expected!")
+					}
+					t.Log("init sync delay on bot", i, ": seq", rootSeq)
+				}
 			}
+			if len(theBots) == complete {
+				t.Log("initsync done")
+				break initialSync
+			}
+			t.Log(z, "continuing initialSync..")
 		}
-		if len(theBots) == complete {
-			t.Log("initsync done")
-			break
-		}
-		t.Log(z, "continuing initialSync..")
-		time.Sleep(1 * time.Second)
 	}
 
 	// check and disconnect
+	var broken = false
 	for i, bot := range theBots {
-		st, err := bot.Status()
+		sv, err := bot.RootLog.Seq().Value()
 		r.NoError(err)
-		a.EqualValues(msgCnt-1, st.Root.Seq(), "wrong rxSeq on bot %d", i)
+		a.EqualValues(msgCnt-1, sv.(margaret.Seq).Seq(), "wrong rxSeq on bot %d", i)
 		err = bot.FSCK(nil, FSCKModeSequences)
-		a.NoError(err, "FSCK error on bot %d", i)
+		if !a.NoError(err, "FSCK error on bot %d", i) {
+			broken = true
+		}
 		bot.Network.GetConnTracker().CloseAll()
-		// g, err := bot.GraphBuilder.Build()
-		// r.NoError(err)
-		// err = g.RenderSVGToFile(filepath.Join("testrun", t.Name(), fmt.Sprintf("bot%d.svg", i)))
-		// r.NoError(err)
+	}
+	if broken {
+		t.Fatal()
 	}
 
 	seqOfFeedA := margaret.BaseSeq(extraTestMessages) // N pre messages +1 contact (0 indexed)
@@ -531,26 +531,25 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 		tMsg := fmt.Sprintf("some fresh msg %d", i)
 		seq, err := botA.PublishLog.Append(tMsg)
 		r.NoError(err)
-		published := time.Now()
+		// published := time.Now()
 		r.EqualValues(msgCnt+i, seq, "new msg %d", i)
 
 		// received new message?
 		// TODO: reflect on slice of chans for less sleep
+		wantSeq := int(seqOfFeedA+2) + i
 		for bI, bChan := range botBreceivedNewMessage {
 			select {
 			case <-time.After(time.Second / 2):
-				t.Errorf("botB%02d: timeout %d....", bI, i)
-				// st, err := bLeafs[bI].Status()
-				// r.NoError(err)
-				// goon.Dump(st)
+				t.Errorf("botB%02d: timeout on %d", bI, wantSeq)
 			case msg := <-bChan:
-				a.EqualValues(int(seqOfFeedA+2)+i, msg.Seq(), "botB%02d: wrong seq", bI)
-				t.Log("delay:", time.Since(published))
+				a.EqualValues(wantSeq, msg.Seq(), "botB%02d: wrong seq", bI)
+				// t.Log("delay:", time.Since(published))
 			}
 		}
 	}
 
 	// cleanup
+	time.Sleep(1 * time.Second)
 	cancel()
 	time.Sleep(1 * time.Second)
 	for bI, bot := range append(bLeafs, botA, botI) {
@@ -558,6 +557,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 		a.NoError(err, "botB%02d fsck", bI)
 		bot.Shutdown()
 		r.NoError(bot.Close())
+		t.Logf("closed botB%02d fsck", bI)
 	}
 	r.NoError(botgroup.Wait())
 }
@@ -569,7 +569,6 @@ func makeChanWaiter(ctx context.Context, src luigi.Source, gotMsg chan<- ssb.Mes
 			v, err := src.Next(ctx)
 			if err != nil {
 				if luigi.IsEOS(err) || errors.Cause(err) == context.Canceled {
-					fmt.Println("query exited", err)
 					return nil
 				}
 				return err
@@ -577,8 +576,14 @@ func makeChanWaiter(ctx context.Context, src luigi.Source, gotMsg chan<- ssb.Mes
 
 			msg := v.(ssb.Message)
 
-			fmt.Println("rxFeed", msg.Author().Ref()[1:5], "msgSeq", msg.Seq(), "key", msg.Key().Ref())
-			gotMsg <- msg
+			// fmt.Println("rxFeed", msg.Author().Ref()[1:5], "msgSeq", msg.Seq(), "key", msg.Key().Ref())
+			select {
+			case gotMsg <- msg:
+
+			case <-ctx.Done():
+				return nil
+
+			}
 		}
 	}
 }
