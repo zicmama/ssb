@@ -80,8 +80,11 @@ type gabbyVerify struct {
 func (gv gabbyVerify) Verify(v interface{}) (msg ssb.Message, err error) {
 	trBytes, ok := v.([]uint8)
 	if !ok {
-		err = errors.Errorf("gabbyVerify: expected %T - got %T", trBytes, v)
-		return
+		codec, ok := v.(codec.Body)
+		if !ok {
+			return nil, errors.Errorf("legacyVerify: expected %T - got %T", codec, v)
+		}
+		trBytes = codec
 	}
 	var tr gabbygrove.Transfer
 	if uErr := tr.UnmarshalCBOR(trBytes); uErr != nil {

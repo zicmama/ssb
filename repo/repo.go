@@ -254,7 +254,7 @@ func OpenBadgerIndex(r Interface, name string, f func(*badger.DB) librarian.Sink
 		}
 
 		err = luigi.Pump(ctx, sinkidx, src)
-		if err == ssb.ErrShuttingDown {
+		if err == ssb.ErrShuttingDown || errors.Cause(err) == context.Canceled {
 			return nil
 		}
 
