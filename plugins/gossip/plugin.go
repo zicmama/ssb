@@ -5,6 +5,7 @@ package gossip
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/cryptix/go/logging"
@@ -89,6 +90,17 @@ func New(
 
 		logger: log,
 	}
+
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p pull \n", id.Ref()[1:5], h.pull)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p self \n", id.Ref()[1:5], &h.pull.self)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p gb\n", id.Ref()[1:5], &h.pull.gb)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p feedIdx\n", id.Ref()[1:5], &h.pull.feedIndex)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p append\n", id.Ref()[1:5], &h.pull.receiveLog)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p\n", id.Ref()[1:5], &h.pull.append)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p\n", id.Ref()[1:5], &h.pull.verifyMu)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p\n", id.Ref()[1:5], &h.pull.verifySinks)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p\n", id.Ref()[1:5], &h.pull.hops)
+	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p\n", id.Ref()[1:5], &h.pull.hmacKey)
 
 	return &plugin{h}
 }
