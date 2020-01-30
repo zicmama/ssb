@@ -6,9 +6,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pkg/errors"
-	"go.cryptoscope.co/muxrpc"
-
 	"go.cryptoscope.co/luigi"
 	"go.cryptoscope.co/margaret"
 )
@@ -91,15 +88,11 @@ func (f *MultiSink) Pour(
 
 	var deadFeeds []luigi.Sink
 
-	for i, s := range f.sinks {
+	for _, s := range f.sinks {
 		err := s.Pour(f.ctxs[s], msg)
-		if luigi.IsEOS(err) || muxrpc.IsSinkClosed(err) || f.until[s] <= f.seq {
+		if err != nil {
 			deadFeeds = append(deadFeeds, s)
 			continue
-		} else if err != nil {
-			// QUESTION: should CloseWithError be used here?
-			err := errors.Wrapf(err, "MultiSink: failed to pour into sink #%d (%v)", i, f.until[s] <= f.seq)
-			return err
 		}
 	}
 
