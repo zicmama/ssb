@@ -11,28 +11,29 @@ require (
 	github.com/cryptix/go v1.5.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dgraph-io/badger v2.0.0-rc2+incompatible
+	github.com/dgryski/go-farm v0.0.0-20191112170834-c2139c5d712b // indirect
 	github.com/dustin/go-humanize v1.0.0
 	github.com/go-kit/kit v0.9.0
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/keks/nocomment v0.0.0-20181007001506-30c6dcb4a472
+	github.com/keks/persist v0.0.0-20191006175951-43c124092b8b // indirect
 	github.com/kylelemons/godebug v1.1.0
 	github.com/libp2p/go-reuseport v0.0.1
 	github.com/mattn/go-sqlite3 v1.11.0
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.2.2
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.1.0
-	github.com/rotisserie/eris v0.1.1 // indirect
 	github.com/sergi/go-diff v1.0.0 // indirect
 	github.com/shurcooL/go v0.0.0-20190704215121-7189cc372560 // indirect
 	github.com/shurcooL/go-goon v0.0.0-20170922171312-37c2f522c041
 	github.com/stretchr/testify v1.4.0
 	github.com/ugorji/go/codec v1.1.7
 	go.cryptoscope.co/librarian v0.2.0
-	go.cryptoscope.co/luigi v0.3.5-0.20190924074117-8ca146aad481
-	go.cryptoscope.co/margaret v0.1.2-0.20200127175556-673b9c24715f
-	go.cryptoscope.co/muxrpc v1.5.4-0.20200128091523-b0246d3c104f
+	go.cryptoscope.co/luigi v0.3.5
+	go.cryptoscope.co/margaret v0.1.3-0.20200130132800-da010cde3254
+	go.cryptoscope.co/muxrpc v1.5.4-0.20200130134545-8c0630a92146
 	go.cryptoscope.co/netwrap v0.1.1
-	go.cryptoscope.co/secretstream v1.2.2-0.20200128091706-5083ee0a21f0
+	go.cryptoscope.co/secretstream v1.2.2-0.20200130134156-5301f8b5dcff
 	go.mindeco.de/ssb-gabbygrove v0.1.6
 	golang.org/x/crypto v0.0.0-20191002192127-34f69633bfdc
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
@@ -42,7 +43,3 @@ require (
 	modernc.org/fileutil v1.0.1-0.20191220121946-b2535a37172b // indirect
 	modernc.org/kv v1.0.0
 )
-
-replace github.com/keks/persist => github.com/cryptix/keks_persist v0.0.0-20190924155924-a51e5e7eb3e6
-
-replace go.cryptoscope.co/secretstream => /home/cryptix/go/src/go.cryptoscope.co/secretstream/
