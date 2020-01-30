@@ -57,6 +57,7 @@ func (lv legacyVerify) Verify(v interface{}) (ssb.Message, error) {
 		}
 		rmsg = json.RawMessage(codec)
 	}
+
 	ref, dmsg, err := legacy.Verify(rmsg, lv.hmacKey)
 	if err != nil {
 		return nil, err

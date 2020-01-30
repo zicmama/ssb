@@ -139,7 +139,7 @@ func NewUnix(path string, opts ...Option) (*Client, error) {
 
 	conn, err := net.Dial("unix", path)
 	if err != nil {
-		return nil, errors.Errorf("ssbClient: failed to open unix path")
+		return nil, errors.Errorf("ssbClient: failed to open unix path %q", path)
 	}
 	c.closer = conn
 
