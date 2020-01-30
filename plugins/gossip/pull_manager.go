@@ -5,7 +5,6 @@ package gossip
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/go-kit/kit/log"
@@ -62,8 +61,6 @@ func (snk *rxSink) Pour(ctx context.Context, val interface{}) error {
 func (snk *rxSink) Close() error { return nil }
 
 func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) {
-	fmt.Fprintf(os.Stderr, "pullManager[%s]: %p verifySinks map\n", pull.self.Ref()[1:5], &pull.verifySinks)
-
 	hops := pull.gb.Hops(&pull.self, pull.hops)
 	if hops == nil {
 		level.Warn(pull.logger).Log("event", "nil hops set")
