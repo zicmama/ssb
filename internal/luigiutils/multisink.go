@@ -6,8 +6,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/pkg/errors"
 	"go.cryptoscope.co/luigi"
 	"go.cryptoscope.co/margaret"
+	"go.cryptoscope.co/muxrpc"
+
+	"go.cryptoscope.co/ssb/internal/neterr"
 )
 
 // MultiSink takes each message poured into it, and passes it on to all
@@ -88,11 +92,18 @@ func (f *MultiSink) Pour(
 
 	var deadFeeds []luigi.Sink
 
-	for _, s := range f.sinks {
+	for i, s := range f.sinks {
 		err := s.Pour(f.ctxs[s], msg)
 		if err != nil {
+			causeErr := errors.Cause(err)
+			if muxrpc.IsSinkClosed(err) || causeErr == context.Canceled || neterr.IsConnBrokenErr(causeErr) {
+				deadFeeds = append(deadFeeds, s)
+				continue
+			}
+			return errors.Wrapf(err, "MultiSink: failed to pour into sink #%d (%v)", i)
+		}
+		if f.until[s] <= f.seq {
 			deadFeeds = append(deadFeeds, s)
-			continue
 		}
 	}
 
