@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/VividCortex/gohistogram"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.cryptoscope.co/margaret"
@@ -29,6 +30,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	botgroup, ctx := errgroup.WithContext(ctx)
 
+	delayHist := gohistogram.NewHistogram(20)
 	info := testutils.NewRelativeTimeLogger(nil)
 	bs := newBotServer(ctx, info)
 
@@ -73,7 +75,6 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 
 			if fQ == 1 {
 				msgCnt++
-				t.Log(i, "follows", j)
 				_, err := botI.PublishLog.Append(ssb.NewContactFollow(botJ.KeyPair.Id))
 				r.NoError(err)
 			}
@@ -117,6 +118,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 	for i := 0; i < testMessageCount; i++ {
 		rxSeq, err := theBots[n-1].PublishLog.Append(fmt.Sprintf("some test msg:%02d", n))
 		r.NoError(err)
+		published := time.Now()
 		a.EqualValues(margaret.BaseSeq(msgCnt+i), rxSeq)
 
 		// received new message?
@@ -125,6 +127,7 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 			t.Errorf("timeout %d....", i)
 		case msg := <-gotMsg:
 			a.EqualValues(margaret.BaseSeq(n+i), msg.Seq(), "wrong seq")
+			delayHist.Add(time.Since(published).Seconds())
 		}
 	}
 
@@ -138,6 +141,10 @@ func TestFeedsLiveNetworkChain(t *testing.T) {
 		r.NoError(bot.Close(), "failed to close bot%02d fsck", bI)
 	}
 	r.NoError(botgroup.Wait())
+
+	t.Log("cleanup complete")
+	t.Log("delay mean:", time.Duration(delayHist.Mean()*float64(time.Second)))
+	t.Log("delay variance:", time.Duration(delayHist.Variance()*float64(time.Second)))
 }
 
 func TestFeedsLiveNetworkStar(t *testing.T) {
@@ -187,32 +194,20 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 			botJ := theBots[j]
 
 			if fQ == 1 {
-				t.Log(i, "follows", j)
 				_, err := botI.PublishLog.Append(ssb.Contact{Type: "contact", Following: true,
 					Contact: botJ.KeyPair.Id,
 				})
 				r.NoError(err)
 			}
 		}
-
 	}
 
-	// setup listener
-	uf, ok := botA.GetMultiLog("userFeeds")
-	r.True(ok)
-	feedOfBotC, err := uf.Get(botC.KeyPair.Id.StoredAddr())
-	r.NoError(err)
-
-	seqv, err := feedOfBotC.Seq().Value()
-	r.NoError(err)
-	r.EqualValues(margaret.BaseSeq(-1), seqv, "before connect check")
+	initialSync(t, theBots, 6)
 
 	// dial up A->B and B->C
-	err = botA.Network.Connect(ctx, botB.Network.GetListenAddr())
+	err := botA.Network.Connect(ctx, botB.Network.GetListenAddr())
 	r.NoError(err)
 	err = botB.Network.Connect(ctx, botC.Network.GetListenAddr())
-	r.NoError(err)
-	err = botA.Network.Connect(ctx, botB.Network.GetListenAddr())
 	r.NoError(err)
 
 	time.Sleep(3 / 2 * time.Second)
@@ -222,12 +217,19 @@ func TestFeedsLiveNetworkStar(t *testing.T) {
 	r.True(ok)
 	feedOfBotCAtB, err := ufOfBotB.Get(botC.KeyPair.Id.StoredAddr())
 	r.NoError(err)
-	seqv, err = feedOfBotCAtB.Seq().Value()
+	seqv, err := feedOfBotCAtB.Seq().Value()
 	r.NoError(err)
+
 	wantSeq := margaret.BaseSeq(1)
 	r.EqualValues(wantSeq, seqv, "after connect check")
 
 	t.Log("commencing live tests")
+
+	// setup listener
+	uf, ok := botA.GetMultiLog("userFeeds")
+	r.True(ok)
+	feedOfBotC, err := uf.Get(botC.KeyPair.Id.StoredAddr())
+	r.NoError(err)
 
 	gotMsg := make(chan ssb.Message)
 
@@ -273,6 +275,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 	ctx, testCancel := context.WithCancel(context.TODO())
 	botgroup, ctx := errgroup.WithContext(ctx)
 
+	delayHist := gohistogram.NewHistogram(20)
 	info := testutils.NewRelativeTimeLogger(nil)
 	bs := newBotServer(ctx, info)
 
@@ -309,17 +312,16 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 
 			x := i*6 + j
 			fQ := followMatrix[x]
-			// t.Log(i, j, fQ)
 
 			botI := theBots[i]
 			botJ := theBots[j]
 
 			if fQ == 1 {
-				ref, err := botI.PublishLog.Publish(ssb.Contact{Type: "contact", Following: true,
+				_, err := botI.PublishLog.Publish(ssb.Contact{Type: "contact", Following: true,
 					Contact: botJ.KeyPair.Id,
 				})
 				r.NoError(err)
-				t.Log(i, "followed", j, ref.Ref()[1:5])
+				// t.Log(i, "followed", j, ref.Ref()[1:5])
 				followMsgs++
 			}
 		}
@@ -349,7 +351,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 			if fQ == 1 {
 				err := botI.Network.Connect(ctx, botJ.Network.GetListenAddr())
 				r.NoError(err)
-				t.Log(i, "connected", j)
+				// t.Log(i, "connected", j)
 				time.Sleep(1 * time.Second)
 			}
 		}
@@ -376,7 +378,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 		tMsg := fmt.Sprintf("some test msg %d", i)
 		seq, err := theBots[5].PublishLog.Append(tMsg)
 		r.NoError(err)
-
+		published := time.Now()
 		r.Equal(margaret.BaseSeq(22+i), seq, "new msg %d", i)
 
 		// received new message?
@@ -385,6 +387,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 			t.Errorf("timeout %d....", i)
 		case msg := <-gotMsg:
 			a.EqualValues(margaret.BaseSeq(4+i), msg.Seq(), "wrong seq")
+			delayHist.Add(time.Since(published).Seconds())
 		}
 	}
 
@@ -399,4 +402,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 		r.NoError(bot.Close())
 	}
 	r.NoError(botgroup.Wait())
+	t.Log("cleanup complete")
+	t.Log("delay mean:", time.Duration(delayHist.Mean()*float64(time.Second)))
+	t.Log("delay variance:", time.Duration(delayHist.Variance()*float64(time.Second)))
 }

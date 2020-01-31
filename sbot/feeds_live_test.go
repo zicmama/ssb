@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/VividCortex/gohistogram"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -35,11 +36,9 @@ var (
 )
 
 func init() {
-	if time.Now().Unix()%2 == 0 {
-		// shifts the keypair order around each time
-		// so the order is shifted sometimes (botA is GG format instead of legacy sometimes)
-		botCnt = 1
-	}
+	// shifts the keypair order around each time
+	// so the order is shifted sometimes (botA is GG format instead of legacy sometimes)
+	botCnt = byte(time.Now().Unix() % 255)
 }
 
 func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
@@ -86,6 +85,7 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	botgroup, ctx := errgroup.WithContext(ctx)
 
+	delayHist := gohistogram.NewHistogram(20)
 	info := testutils.NewRelativeTimeLogger(nil)
 	bs := newBotServer(ctx, info)
 
@@ -216,11 +216,10 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 		case msg, ok := <-gotMsg:
 			r.True(ok, "%d: gotMsg closed", i)
 			a.EqualValues(margaret.BaseSeq(testMessageCount+4+i), msg.Seq(), "wrong seq on try %d", i)
-			t.Log("delay:", time.Since(published))
+			delayHist.Add(time.Since(published).Seconds())
 		}
 	}
 
-	t.Log("cleanup")
 	cancel()
 	time.Sleep(1 * time.Second)
 	for _, bot := range theBots {
@@ -230,6 +229,10 @@ func TestFeedsLiveSimpleFour(t *testing.T) {
 		r.NoError(bot.Close())
 	}
 	r.NoError(botgroup.Wait())
+
+	t.Log("cleanup complete")
+	t.Log("delay mean:", time.Duration(delayHist.Mean()*float64(time.Second)))
+	t.Log("delay variance:", time.Duration(delayHist.Variance()*float64(time.Second)))
 }
 
 // setup two bots, connect once and publish afterwards
@@ -473,10 +476,11 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 
 		// received new message?
 		// TODO: reflect on slice of chans for less sleep
+
 		wantSeq := int(seqOfFeedA+2) + i
 		for bI, bChan := range botBreceivedNewMessage {
 			select {
-			case <-time.After(time.Second / 2):
+			case <-time.After(time.Second):
 				t.Errorf("botB%02d: timeout on %d", bI, wantSeq)
 			case msg := <-bChan:
 				a.EqualValues(wantSeq, msg.Seq(), "botB%02d: wrong seq", bI)
@@ -532,7 +536,7 @@ initialSync:
 							broken = true
 							t.Error(err)
 						}
-						t.Fatal("bot", i, "has more messages then expected!")
+						t.Fatal("bot", i, "has more messages then expected:", rootSeq)
 					}
 					t.Log("init sync delay on bot", i, ": seq", rootSeq)
 				}
