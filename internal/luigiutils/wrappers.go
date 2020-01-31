@@ -19,8 +19,13 @@ func NewGabbyStreamSink(stream luigi.Sink) luigi.Sink {
 		if err != nil {
 			return err
 		}
-		mm, ok := v.(*multimsg.MultiMessage)
-		if !ok {
+		var mm *multimsg.MultiMessage
+		switch tv := v.(type) {
+		case *multimsg.MultiMessage:
+			mm = tv
+		case multimsg.MultiMessage:
+			mm = &tv
+		default:
 			return errors.Errorf("gabbyStream: expected MultiMessage - got %T", v)
 		}
 
