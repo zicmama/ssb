@@ -480,7 +480,7 @@ func (proc *wantProc) Pour(ctx context.Context, v interface{}) error {
 		} else {
 			if proc.wmgr.Wants(w.Ref) {
 				if uint(w.Dist) > proc.wmgr.maxSize {
-					dbg.Log("msg", "blob we wanted is larger then our max setting", "ref", w.Ref.Ref(), "diff", uint(w.Dist)-proc.wmgr.maxSize)
+					dbg.Log("msg", "blob we wanted is larger then our max setting", "ref", w.Ref.Ref()[1:5], "diff", uint(w.Dist)-proc.wmgr.maxSize)
 					proc.wmgr.l.Lock()
 					delete(proc.wmgr.wants, w.Ref.Ref())
 					proc.wmgr.l.Unlock()
