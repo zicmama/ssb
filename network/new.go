@@ -22,6 +22,7 @@ import (
 
 	"go.cryptoscope.co/ssb"
 	"go.cryptoscope.co/ssb/internal/ctxutils"
+	"go.cryptoscope.co/ssb/internal/neterr"
 )
 
 // DefaultPort is the default listening port for ScuttleButt.
@@ -290,8 +291,12 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 	defer edp.Terminate()
 	srv := edp.(muxrpc.Server)
 
-	if err := srv.Serve(ctx); err != nil {
-		level.Debug(n.log).Log("conn", "serve", "err", err)
+	err = srv.Serve(ctx)
+	if err != nil {
+		causeErr := errors.Cause(err)
+		if !neterr.IsConnBrokenErr(causeErr) && causeErr != context.Canceled {
+			level.Debug(n.log).Log("conn", "serve", "err", err)
+		}
 	}
 	n.removeRemote(edp)
 }

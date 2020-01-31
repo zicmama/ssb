@@ -17,7 +17,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"go.cryptoscope.co/ssb"
-	// "go.cryptoscope.co/ssb/network"
 	"go.cryptoscope.co/ssb/internal/mutil"
 	"go.cryptoscope.co/ssb/internal/testutils"
 )
