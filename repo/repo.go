@@ -223,7 +223,7 @@ func OpenIndex(r Interface, name string, f func(librarian.SeqSetterIndex) librar
 		}
 
 		err = luigi.Pump(ctx, sinkidx, src)
-		if err == ssb.ErrShuttingDown {
+		if err == ssb.ErrShuttingDown || errors.Cause(err) == context.Canceled {
 			return db.Close()
 		}
 

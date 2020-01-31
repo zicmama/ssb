@@ -17,6 +17,9 @@ import (
 func NewGabbyStreamSink(stream luigi.Sink) luigi.Sink {
 	wrappedSink := luigi.FuncSink(func(ctx context.Context, v interface{}, err error) error {
 		if err != nil {
+			if luigi.IsEOS(err) {
+				return nil
+			}
 			return err
 		}
 		var mm *multimsg.MultiMessage
