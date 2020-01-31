@@ -276,7 +276,8 @@ func LotsOfStatusCalls(newPair mkPair) func(t *testing.T) {
 
 					_, err = c.Async(ctx, map[string]interface{}{}, muxrpc.Method{"status"})
 					if err != nil {
-						if errors.Cause(err) == context.Canceled {
+						causeErr := errors.Cause(err)
+						if causeErr == context.Canceled || causeErr == muxrpc.ErrSessionTerminated {
 							return nil
 						}
 						return errors.Wrapf(err, "tick%p failed", tick)
