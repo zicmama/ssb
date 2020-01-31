@@ -16,20 +16,33 @@ import (
 	"go.cryptoscope.co/ssb/message/multimsg"
 )
 
-func NewKeyValueWrapper(snk luigi.Sink, wrap bool) luigi.Sink {
-	return mfr.SinkMap(snk, func(ctx context.Context, v interface{}) (interface{}, error) {
-		abs, ok := v.(ssb.Message)
-		if !ok {
-			seqWrap, ok := v.(margaret.SeqWrapper)
-			if !ok {
-				return nil, errors.Errorf("kvwrap: also not a seqWrapper - got %T", v)
-			}
+func NewKeyValueWrapper(output luigi.Sink, wrap bool) luigi.Sink {
 
-			sv := seqWrap.Value()
+	noNulled := mfr.FilterFunc(func(ctx context.Context, v interface{}) (bool, error) {
+		if err, ok := v.(error); ok {
+			if margaret.IsErrNulled(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+
+	mapToKV := mfr.SinkMap(output, func(ctx context.Context, v interface{}) (interface{}, error) {
+
+		var abs ssb.Message
+		switch tv := v.(type) {
+		case ssb.Message:
+			abs = tv
+		case margaret.SeqWrapper:
+			sv := tv.Value()
+			var ok bool
 			abs, ok = sv.(ssb.Message)
 			if !ok {
 				return nil, errors.Errorf("kvwrap: wrong message type in seqWrapper - got %T", sv)
 			}
+		default:
+			return nil, errors.Errorf("kvwrap: unexpected message type got %T", v)
 		}
 
 		if !wrap {
@@ -61,4 +74,5 @@ func NewKeyValueWrapper(snk luigi.Sink, wrap bool) luigi.Sink {
 
 		return json.RawMessage(kvMsg), nil
 	})
+	return mfr.SinkFilter(mapToKV, noNulled)
 }
