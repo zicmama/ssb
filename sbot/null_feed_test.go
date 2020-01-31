@@ -16,6 +16,7 @@ import (
 
 	"go.cryptoscope.co/ssb"
 	"go.cryptoscope.co/ssb/indexes"
+	"go.cryptoscope.co/ssb/internal/mutil"
 	"go.cryptoscope.co/ssb/internal/testutils"
 	"go.cryptoscope.co/ssb/repo"
 )
@@ -120,7 +121,7 @@ func TestNullFeed(t *testing.T) {
 	checkUserLogSeq(mainbot, "arny", 1)
 	checkUserLogSeq(mainbot, "bert", -1)
 
-	// start bert and publish some messages
+	// start bert and publish some new messages
 	bertBot, err := New(
 		WithKeyPair(kpBert),
 		WithInfo(kitlog.With(logger, "bot", "bert")),
@@ -138,16 +139,35 @@ func TestNullFeed(t *testing.T) {
 	_, err = bertBot.PublishLog.Publish(ssb.NewContactFollow(mainbot.KeyPair.Id))
 	r.NoError(err)
 
-	for i := 1000; i > 0; i-- {
+	if testing.Short() {
+		testMessageCount = 50
+	}
+	for i := testMessageCount; i > 0; i-- {
 		_, err = bertBot.PublishLog.Publish(i)
 		r.NoError(err)
 	}
 
-	err = mainbot.Network.Connect(context.TODO(), bertBot.Network.GetListenAddr())
+	feedsMlog, ok := mainbot.GetMultiLog("userFeeds")
+	r.True(ok)
+	bertsFeed, err := feedsMlog.Get(bertBot.KeyPair.Id.StoredAddr())
+	r.NoError(err)
+	seqv, err := bertsFeed.Seq().Value()
+	r.NoError(err)
+	r.EqualValues(-1, seqv, "should not have berts log yet")
+
+	// setup live listener
+	seqSrc, err := mutil.Indirect(mainbot.RootLog, bertsFeed).Query(
+		margaret.Gt(margaret.BaseSeq(testMessageCount-1)),
+		margaret.Live(true),
+	)
 	r.NoError(err)
 
-	time.Sleep(5 * time.Second)
-	checkUserLogSeq(mainbot, "bert", 1000)
+	err = mainbot.Network.Connect(ctx, bertBot.Network.GetListenAddr())
+	r.NoError(err)
+
+	ctx, cancel2 := context.WithTimeout(ctx, 15*time.Second)
+	_, err = seqSrc.Next(ctx)
+	r.NoError(err)
 
 	bertBot.Shutdown()
 	mainbot.Shutdown()
@@ -155,7 +175,7 @@ func TestNullFeed(t *testing.T) {
 	cancel()
 	r.NoError(bertBot.Close())
 	r.NoError(mainbot.Close())
-
+	cancel2()
 	r.NoError(botgroup.Wait())
 }
 
