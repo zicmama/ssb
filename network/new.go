@@ -93,7 +93,7 @@ func New(opts Options) (ssb.Network, error) {
 	}
 
 	if opts.ConnTracker == nil {
-		opts.ConnTracker = NewLastWinsTracker()
+		opts.ConnTracker = NewAcceptAllTracker()
 	}
 	n.connTracker = opts.ConnTracker
 
