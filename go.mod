@@ -29,7 +29,7 @@ require (
 	github.com/stretchr/testify v1.4.0
 	github.com/ugorji/go/codec v1.1.7
 	go.cryptoscope.co/librarian v0.2.0
-	go.cryptoscope.co/luigi v0.3.5
+	go.cryptoscope.co/luigi v0.3.6-0.20200131144242-3256b54e72c8
 	go.cryptoscope.co/margaret v0.1.3-0.20200130132800-da010cde3254
 	go.cryptoscope.co/muxrpc v1.5.4-0.20200130134545-8c0630a92146
 	go.cryptoscope.co/netwrap v0.1.1
