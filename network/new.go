@@ -251,8 +251,6 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 		return
 	}
 
-	fmt.Println("wrapped and accepted", conn.RemoteAddr().String())
-
 	ctx, cancel := ctxutils.WithError(ctx, fmt.Errorf("handle conn returned"))
 
 	defer func() {
@@ -434,7 +432,6 @@ func (n *node) Connect(ctx context.Context, addr net.Addr) error {
 		}
 		return errors.Wrap(err, "node/connect: error dialing")
 	}
-fmt.Println("dialed", addr.String())
 
 	go func(c net.Conn) {
 		n.handleConnection(ctx, c)

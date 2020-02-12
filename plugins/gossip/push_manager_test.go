@@ -101,36 +101,35 @@ func TestCreateHistoryStream(t *testing.T) {
 			},
 			TotalReceived: userFeedLen - 5,
 		},
-		// {
-		// 	// TODO: investigate what the expected sequence value is for live feeds
-		// 	Name: "Fetching of live stream",
-		// 	Args: message.CreateHistArgs{
-		// 		Seq:        int64(userFeedLen),
-		// 		CommonArgs: message.CommonArgs{Live: true},
-		// 	},
-		// 	LiveMessages:  4,
-		// 	TotalReceived: 5,
-		// },
-		// {
-		// 	Name: "Live stream should respect limit",
-		// 	Args: message.CreateHistArgs{
-		// 		Seq:        int64(userFeedLen),
-		// 		StreamArgs: message.StreamArgs{Limit: 5},
-		// 		CommonArgs: message.CommonArgs{Live: true},
-		// 	},
-		// 	LiveMessages:  10,
-		// 	TotalReceived: 5,
-		// },
-		// {
-		// 	Name: "Live stream should respect limit with old messages",
-		// 	Args: message.CreateHistArgs{
-		// 		Seq:        int64(userFeedLen) - 5,
-		// 		StreamArgs: message.StreamArgs{Limit: 10},
-		// 		CommonArgs: message.CommonArgs{Live: true},
-		// 	},
-		// 	LiveMessages:  15,
-		// 	TotalReceived: 10,
-		// },
+		{
+			Name: "Fetching of live stream",
+			Args: message.CreateHistArgs{
+				Seq:        int64(userFeedLen),
+				CommonArgs: message.CommonArgs{Live: true},
+			},
+			LiveMessages:  4,
+			TotalReceived: 5,
+		},
+		{
+			Name: "Live stream should respect limit",
+			Args: message.CreateHistArgs{
+				Seq:        int64(userFeedLen),
+				StreamArgs: message.StreamArgs{Limit: 5},
+				CommonArgs: message.CommonArgs{Live: true},
+			},
+			LiveMessages:  10,
+			TotalReceived: 5,
+		},
+		{
+			Name: "Live stream should respect limit with old messages",
+			Args: message.CreateHistArgs{
+				Seq:        int64(userFeedLen) - 5,
+				StreamArgs: message.StreamArgs{Limit: 10},
+				CommonArgs: message.CommonArgs{Live: true},
+			},
+			LiveMessages:  15,
+			TotalReceived: 10,
+		},
 	}
 
 	for _, test := range tests {
@@ -159,7 +158,7 @@ func TestCreateHistoryStream(t *testing.T) {
 			var sink countSink
 			sink.info = infoAlice
 
-			fm := NewFeedManager(context.TODO(), rootLog, userFeeds, infoAlice, nil, nil)
+			fm := NewFeedPushManager(context.TODO(), rootLog, userFeeds, infoAlice, nil, nil)
 
 			err = fm.CreateStreamHistory(ctx, &sink, &test.Args)
 			r.NoError(err)

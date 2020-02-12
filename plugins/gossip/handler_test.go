@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: MIT
 
+// +build ignore
+
+// TODO: these need to be re-written.
+// would be nice to run the normal handler against a misbehaving one to simulate faulty messages for instance
+
 package gossip
 
 import (
