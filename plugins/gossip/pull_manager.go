@@ -120,7 +120,12 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 				return errors.Errorf("pullManager: expected stream packet")
 			}
 
-			return verifySink.Pour(ctx, pkt.Body)
+			if err := verifySink.Pour(ctx, pkt.Body); err != nil {
+				level.Warn(pull.logger).Log("event", "msg-verify", "err", err)
+				return luigi.EOS{}
+			}
+
+			return nil
 		})
 
 		err = edp.SunkenSource(ctx, storeSnk, method, q)
