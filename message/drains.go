@@ -124,7 +124,7 @@ type streamDrain struct {
 func (ld *streamDrain) Pour(ctx context.Context, v interface{}) error {
 	next, err := ld.verify.Verify(v)
 	if err != nil {
-		return errors.Wrapf(err, "muxDrain(%s:%d) verify failed (%T)", ld.who.Ref()[1:5], ld.latestSeq.Seq(), v)
+		return errors.Wrapf(err, "muxDrain(%s:%d) verify failed (%T)", ld.who.ShortRef(), ld.latestSeq.Seq(), v)
 	}
 
 	err = ValidateNext(ld.latestMsg, next)
@@ -137,7 +137,7 @@ func (ld *streamDrain) Pour(ctx context.Context, v interface{}) error {
 
 	err = ld.storage.Pour(ctx, next)
 	if err != nil {
-		return errors.Wrapf(err, "muxDrain(%s): failed to append message(%s:%d)", ld.who.Ref()[1:5], next.Key().Ref(), next.Seq())
+		return errors.Wrapf(err, "muxDrain(%s): failed to append message(%s:%d)", ld.who.ShortRef(), next.Key().Ref(), next.Seq())
 	}
 
 	ld.latestSeq = margaret.BaseSeq(next.Seq())
@@ -157,7 +157,7 @@ func ValidateNext(current, next ssb.Message) error {
 		currSeq := current.Seq()
 		author := current.Author()
 		if !author.Equal(next.Author()) {
-			return errors.Errorf("ValidateNext(%s:%d): wrong author: %s", author.Ref()[1:5], currSeq, next.Author().Ref())
+			return errors.Errorf("ValidateNext(%s:%d): wrong author: %s", author.ShortRef(), currSeq, next.Author().Ref())
 		}
 
 		currKey := current.Key()
@@ -178,7 +178,7 @@ func ValidateNext(current, next ssb.Message) error {
 			if shouldSkip {
 				return errSkip
 			}
-			return errors.Errorf("ValidateNext(%s:%d): next.seq(%d) != curr.seq+1", author.Ref()[1:5], currSeq, nextSeq)
+			return errors.Errorf("ValidateNext(%s:%d): next.seq(%d) != curr.seq+1", author.ShortRef(), currSeq, nextSeq)
 		}
 
 		if !currKey.Equal(*nextPrev) {
@@ -192,7 +192,7 @@ func ValidateNext(current, next ssb.Message) error {
 
 	} else { // first message
 		if nextSeq != 1 {
-			return errors.Errorf("ValidateNext(%s:%d): first message has to have sequence 1", next.Author().Ref()[1:5], nextSeq)
+			return errors.Errorf("ValidateNext(%s:%d): first message has to have sequence 1", next.Author().ShortRef(), nextSeq)
 		}
 	}
 

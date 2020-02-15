@@ -56,7 +56,7 @@ func (h *handler) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
 		return
 	}
 
-	info := log.With(h.logger, "remote", remoteRef.Ref()[1:5], "event", "gossiprx")
+	info := log.With(h.logger, "remote", remoteRef.ShortRef(), "event", "gossiprx")
 
 	if h.promisc {
 		hasCallee, err := multilog.Has(h.feedIndex, remoteRef.StoredAddr())
@@ -153,7 +153,7 @@ func (h *handler) HandleCall(
 			return
 		}
 
-		// hlog = log.With(hlog, "fr", query.ID.Ref()[1:5], "remote", remote.Ref()[1:5])
+		// hlog = log.With(hlog, "fr", query.ID.ShortRef(), "remote", remote.ShortRef())
 		// dbgLog = level.Warn(hlog)
 
 		// skip this check for self/master or in promisc mode (talk to everyone)

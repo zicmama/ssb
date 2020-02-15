@@ -578,7 +578,7 @@ func makeChanWaiter(ctx context.Context, src luigi.Source, gotMsg chan<- ssb.Mes
 
 			msg := v.(ssb.Message)
 
-			// fmt.Println("rxFeed", msg.Author().Ref()[1:5], "msgSeq", msg.Seq(), "key", msg.Key().Ref())
+			// fmt.Println("rxFeed", msg.Author().ShortRef(), "msgSeq", msg.Seq(), "key", msg.Key().Ref())
 			select {
 			case gotMsg <- msg:
 

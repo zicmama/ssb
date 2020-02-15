@@ -53,7 +53,7 @@ func (snk *rxSink) Pour(ctx context.Context, val interface{}) error {
 		return errors.Wrap(err, "failed to append verified message to rootLog")
 	}
 	// msg := val.(ssb.Message)
-	// level.Warn(snk.logger).Log("receivedAsSeq", rxSeq.Seq(), "msgSeq", msg.Seq(), "author", msg.Author().Ref()[1:5])
+	// level.Warn(snk.logger).Log("receivedAsSeq", rxSeq.Seq(), "msgSeq", msg.Seq(), "author", msg.Author().ShortRef())
 	snk.mu.Unlock()
 	return nil
 }
@@ -76,7 +76,7 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 	for _, ref := range hopsLst {
 		latestSeq, latestMsg, err := pull.getLatestSeq(ref)
 		if err != nil {
-			level.Error(pull.logger).Log("event", "failed to get sequence for feed", "err", err, "fr", ref.Ref()[1:5])
+			level.Error(pull.logger).Log("event", "failed to get sequence for feed", "err", err, "fr", ref.ShortRef())
 			return
 		}
 

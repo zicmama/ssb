@@ -320,7 +320,7 @@ func TestFeedsLiveNetworkDiamond(t *testing.T) {
 					Contact: botJ.KeyPair.Id,
 				})
 				r.NoError(err)
-				// t.Log(i, "followed", j, ref.Ref()[1:5])
+				// t.Log(i, "followed", j, ref.ShortRef())
 				followMsgs++
 			}
 		}

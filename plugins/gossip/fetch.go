@@ -88,7 +88,7 @@ func (h *handler) makeWorker(work <-chan *ssb.FeedRef, ctx context.Context, edp 
 				return err
 			} else if err != nil {
 				// just logging the error assuming forked feed for instance
-				level.Warn(h.logger).Log("event", "skipped updating of stored feed", "err", err, "fr", ref.Ref()[1:5])
+				level.Warn(h.logger).Log("event", "skipped updating of stored feed", "err", err, "fr", ref.ShortRef())
 			}
 		}
 		return nil
@@ -121,7 +121,7 @@ func (g *handler) fetchFeed(
 	g.activeLock.Lock()
 	_, ok := g.activeFetch.Load(addr)
 	if ok {
-		level.Warn(g.logger).Log("fetchFeed", "crawl active", "addr", fr.Ref()[1:5])
+		level.Warn(g.logger).Log("fetchFeed", "crawl active", "addr", fr.ShortRef())
 		g.activeLock.Unlock()
 		return nil
 	}
@@ -180,8 +180,8 @@ func (g *handler) fetchFeed(
 
 	startSeq := latestSeq
 	info := log.With(g.logger, "event", "gossiprx",
-		"fr", fr.Ref()[1:5],
-		"latest", startSeq) // , "me", g.Id.Ref()[1:5])
+		"fr", fr.ShortRef(),
+		"latest", startSeq) // , "me", g.Id.ShortRef())
 
 	var q = message.CreateHistArgs{
 		ID:         fr,
