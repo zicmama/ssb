@@ -345,6 +345,8 @@ func (n *node) Serve(ctx context.Context, wrappers ...muxrpc.HandlerWrapper) err
 					continue
 				}
 				switch cause := errors.Cause(err).(type) {
+				case secrethandshake.ErrProcessing:
+					// ignore
 				case secrethandshake.ErrProtocol:
 					// ignore
 				default:
@@ -370,7 +372,8 @@ func (n *node) Serve(ctx context.Context, wrappers ...muxrpc.HandlerWrapper) err
 				}
 
 				switch cause := errors.Cause(err).(type) {
-
+				case secrethandshake.ErrProcessing:
+					// ignore
 				case secrethandshake.ErrProtocol:
 					// ignore
 				default:
