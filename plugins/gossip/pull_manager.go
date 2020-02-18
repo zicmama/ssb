@@ -135,7 +135,6 @@ func (pull *pullManager) RequestFeeds(ctx context.Context, edp muxrpc.Endpoint) 
 			return
 		}
 	}
-	// level.Debug(pull.logger).Log("msg", "pull inited", "count", hops.Count(), "took", time.Since(start))
 }
 
 func (pull pullManager) getLatestSeq(fr *ssb.FeedRef) (margaret.Seq, ssb.Message, error) {

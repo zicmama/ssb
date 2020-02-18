@@ -22,128 +22,140 @@ import (
 )
 
 func TestFeedsLiveNetworkChain(t *testing.T) {
-	r := require.New(t)
-	a := assert.New(t)
-	os.RemoveAll(filepath.Join("testrun", t.Name()))
-
-	ctx, cancel := context.WithCancel(context.TODO())
-	botgroup, ctx := errgroup.WithContext(ctx)
-
-	delayHist := gohistogram.NewHistogram(20)
-	info := testutils.NewRelativeTimeLogger(nil)
-	bs := newBotServer(ctx, info)
-
-	appKey := make([]byte, 32)
-	rand.Read(appKey)
-	hmacKey := make([]byte, 32)
-	rand.Read(hmacKey)
-
-	netOpts := []Option{
-		WithAppKey(appKey),
-		WithHMACSigning(hmacKey),
+	t.Run("len3", makeFeedsLiveNetworkChain(3))
+	if testing.Short() {
+		return
 	}
+	t.Run("len5", makeFeedsLiveNetworkChain(5))
+	t.Run("len7", makeFeedsLiveNetworkChain(7))
+	t.Run("len9", makeFeedsLiveNetworkChain(9))
+}
 
-	theBots := []*Sbot{}
-	n := 7
-	for i := 0; i < n; i++ {
-		botI := makeNamedTestBot(t, strconv.Itoa(i), netOpts)
-		botgroup.Go(bs.Serve(botI))
-		theBots = append(theBots, botI)
-	}
+func makeFeedsLiveNetworkChain(chainLen uint) func(t *testing.T) {
+	return func(t *testing.T) {
+		r := require.New(t)
+		a := assert.New(t)
+		os.RemoveAll(filepath.Join("testrun", t.Name()))
 
-	// all one expect diagonal
-	followMatrix := make([]int, n*n)
-	for i := 0; i < n; i++ {
-		for j := 0; j < n; j++ {
-			if i == j {
-				continue
-			}
-			x := i*n + j
-			followMatrix[x] = 1
+		ctx, cancel := context.WithCancel(context.TODO())
+		botgroup, ctx := errgroup.WithContext(ctx)
+
+		delayHist := gohistogram.NewHistogram(20)
+		info := testutils.NewRelativeTimeLogger(nil)
+		bs := newBotServer(ctx, info)
+
+		appKey := make([]byte, 32)
+		rand.Read(appKey)
+		hmacKey := make([]byte, 32)
+		rand.Read(hmacKey)
+
+		netOpts := []Option{
+			WithAppKey(appKey),
+			WithHMACSigning(hmacKey),
 		}
-	}
 
-	msgCnt := 0
-	for i := 0; i < n; i++ {
-		for j := 0; j < n; j++ {
-			x := i*n + j
-			fQ := followMatrix[x]
+		theBots := []*Sbot{}
+		n := int(chainLen)
+		for i := 0; i < n; i++ {
+			botI := makeNamedTestBot(t, strconv.Itoa(i), netOpts)
+			botgroup.Go(bs.Serve(botI))
+			theBots = append(theBots, botI)
+		}
 
+		// all one expect diagonal
+		followMatrix := make([]int, n*n)
+		for i := 0; i < n; i++ {
+			for j := 0; j < n; j++ {
+				if i == j {
+					continue
+				}
+				x := i*n + j
+				followMatrix[x] = 1
+			}
+		}
+
+		msgCnt := 0
+		for i := 0; i < n; i++ {
+			for j := 0; j < n; j++ {
+				x := i*n + j
+				fQ := followMatrix[x]
+
+				botI := theBots[i]
+				botJ := theBots[j]
+
+				if fQ == 1 {
+					msgCnt++
+					_, err := botI.PublishLog.Append(ssb.NewContactFollow(botJ.KeyPair.Id))
+					r.NoError(err)
+				}
+			}
+		}
+
+		initialSync(t, theBots, msgCnt)
+
+		// dial up a chain
+		for i := 0; i < n-1; i++ {
 			botI := theBots[i]
-			botJ := theBots[j]
+			botJ := theBots[i+1]
 
-			if fQ == 1 {
-				msgCnt++
-				_, err := botI.PublishLog.Append(ssb.NewContactFollow(botJ.KeyPair.Id))
-				r.NoError(err)
+			err := botI.Network.Connect(ctx, botJ.Network.GetListenAddr())
+			r.NoError(err)
+		}
+		time.Sleep(1 * time.Second)
+
+		// did b0 get feed of bN-1?
+		feedIndexOfBot0, ok := theBots[0].GetMultiLog("userFeeds")
+		r.True(ok)
+		feedOfLastBot, err := feedIndexOfBot0.Get(theBots[n-1].KeyPair.Id.StoredAddr())
+		r.NoError(err)
+		seqv, err := feedOfLastBot.Seq().Value()
+		r.NoError(err)
+		wantSeq := margaret.BaseSeq(n - 2)
+		r.EqualValues(wantSeq, seqv, "after connect check")
+
+		// setup live listener
+		gotMsg := make(chan ssb.Message)
+
+		seqSrc, err := mutil.Indirect(theBots[0].RootLog, feedOfLastBot).Query(
+			margaret.Gt(wantSeq),
+			margaret.Live(true),
+		)
+		r.NoError(err)
+
+		botgroup.Go(makeChanWaiter(ctx, seqSrc, gotMsg))
+
+		// now publish on C and let them bubble to A, live without reconnect
+		for i := 0; i < testMessageCount; i++ {
+			rxSeq, err := theBots[n-1].PublishLog.Append(fmt.Sprintf("some test msg:%02d", n))
+			r.NoError(err)
+			published := time.Now()
+			a.EqualValues(margaret.BaseSeq(msgCnt+i), rxSeq)
+
+			// received new message?
+			select {
+			case <-time.After(2 * time.Second):
+				t.Errorf("timeout %d....", i)
+			case msg := <-gotMsg:
+				a.EqualValues(margaret.BaseSeq(n+i), msg.Seq(), "wrong seq")
+				delayHist.Add(time.Since(published).Seconds())
 			}
 		}
-	}
 
-	initialSync(t, theBots, msgCnt)
-
-	// dial up a chain
-	for i := 0; i < n-1; i++ {
-		botI := theBots[i]
-		botJ := theBots[i+1]
-
-		err := botI.Network.Connect(ctx, botJ.Network.GetListenAddr())
-		r.NoError(err)
-	}
-	time.Sleep(1 * time.Second)
-
-	// did b0 get feed of bN-1?
-	feedIndexOfBot0, ok := theBots[0].GetMultiLog("userFeeds")
-	r.True(ok)
-	feedOfLastBot, err := feedIndexOfBot0.Get(theBots[n-1].KeyPair.Id.StoredAddr())
-	r.NoError(err)
-	seqv, err := feedOfLastBot.Seq().Value()
-	r.NoError(err)
-	wantSeq := margaret.BaseSeq(n - 2)
-	r.EqualValues(wantSeq, seqv, "after connect check")
-
-	// setup live listener
-	gotMsg := make(chan ssb.Message)
-
-	seqSrc, err := mutil.Indirect(theBots[0].RootLog, feedOfLastBot).Query(
-		margaret.Gt(wantSeq),
-		margaret.Live(true),
-	)
-	r.NoError(err)
-
-	botgroup.Go(makeChanWaiter(ctx, seqSrc, gotMsg))
-
-	// now publish on C and let them bubble to A, live without reconnect
-	for i := 0; i < testMessageCount; i++ {
-		rxSeq, err := theBots[n-1].PublishLog.Append(fmt.Sprintf("some test msg:%02d", n))
-		r.NoError(err)
-		published := time.Now()
-		a.EqualValues(margaret.BaseSeq(msgCnt+i), rxSeq)
-
-		// received new message?
-		select {
-		case <-time.After(2 * time.Second):
-			t.Errorf("timeout %d....", i)
-		case msg := <-gotMsg:
-			a.EqualValues(margaret.BaseSeq(n+i), msg.Seq(), "wrong seq")
-			delayHist.Add(time.Since(published).Seconds())
+		// cleanup
+		cancel()
+		time.Sleep(1 * time.Second)
+		for bI, bot := range theBots {
+			err = bot.FSCK(nil, FSCKModeSequences)
+			a.NoError(err, "bot%02d fsck", bI)
+			bot.Shutdown()
+			r.NoError(bot.Close(), "failed to close bot%02d fsck", bI)
 		}
-	}
+		r.NoError(botgroup.Wait())
 
-	// cleanup
-	cancel()
-	time.Sleep(1 * time.Second)
-	for bI, bot := range theBots {
-		err = bot.FSCK(nil, FSCKModeSequences)
-		a.NoError(err, "bot%02d fsck", bI)
-		bot.Shutdown()
-		r.NoError(bot.Close(), "failed to close bot%02d fsck", bI)
+		t.Log("cleanup complete")
+		t.Log("delay mean:", time.Duration(delayHist.Mean()*float64(time.Second)))
+		t.Log("delay variance:", time.Duration(delayHist.Variance()*float64(time.Second)))
 	}
-	r.NoError(botgroup.Wait())
-
-	t.Log("cleanup complete")
-	t.Log("delay mean:", time.Duration(delayHist.Mean()*float64(time.Second)))
-	t.Log("delay variance:", time.Duration(delayHist.Variance()*float64(time.Second)))
 }
 
 func TestFeedsLiveNetworkStar(t *testing.T) {

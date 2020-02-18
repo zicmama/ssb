@@ -41,7 +41,7 @@ func init() {
 	botCnt = byte(time.Now().Unix() % 255)
 }
 
-func makeNamedTestBot(t *testing.T, name string, opts []Option) *Sbot {
+func makeNamedTestBot(t testing.TB, name string, opts []Option) *Sbot {
 	r := require.New(t)
 	if testing.Short() {
 		testMessageCount = 25
@@ -502,7 +502,7 @@ func TestFeedsLiveSimpleStar(t *testing.T) {
 	r.NoError(botgroup.Wait())
 }
 
-func initialSync(t *testing.T, theBots []*Sbot, expectedMsgCount int) {
+func initialSync(t testing.TB, theBots []*Sbot, expectedMsgCount int) {
 	ctx := context.TODO()
 	r := require.New(t)
 	a := assert.New(t)
