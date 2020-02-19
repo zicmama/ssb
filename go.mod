@@ -31,7 +31,7 @@ require (
 	go.cryptoscope.co/librarian v0.2.0
 	go.cryptoscope.co/luigi v0.3.6-0.20200131144242-3256b54e72c8
 	go.cryptoscope.co/margaret v0.1.3-0.20200130132800-da010cde3254
-	go.cryptoscope.co/muxrpc v1.5.4-0.20200212114344-0403d7496950
+	go.cryptoscope.co/muxrpc v1.5.4-0.20200219104627-9d8a0d171054
 	go.cryptoscope.co/netwrap v0.1.1
 	go.cryptoscope.co/secretstream v1.2.2-0.20200130134156-5301f8b5dcff
 	go.mindeco.de/ssb-gabbygrove v0.1.6
