@@ -33,6 +33,8 @@ import (
 	"go.cryptoscope.co/ssb/plugins/replicate"
 	"go.cryptoscope.co/ssb/plugins/status"
 	"go.cryptoscope.co/ssb/plugins/whoami"
+	"go.cryptoscope.co/ssb/plugins2"
+	"go.cryptoscope.co/ssb/plugins2/bytype"
 	"go.cryptoscope.co/ssb/private"
 	"go.cryptoscope.co/ssb/repo"
 )
@@ -153,6 +155,10 @@ func initSbot(s *Sbot) (*Sbot, error) {
 	}
 
 	// LogBuilder doesn't fully work yet
+	err = MountPlugin(&bytype.Plugin{}, plugins2.AuthMaster)(s)
+	if err != nil {
+		return nil, err
+	}
 	if mt, ok := s.mlogIndicies["msgTypes"]; ok {
 		level.Warn(s.info).Log("event", "bot init", "msg", "using experimental bytype:contact graph implementation")
 		contactLog, err := mt.Get(librarian.Addr("contact"))

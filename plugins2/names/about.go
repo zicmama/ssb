@@ -170,7 +170,7 @@ func (ab aboutStore) CollectedFor(ref *ssb.FeedRef) (*AboutInfo, error) {
 					log.Printf("no field for: %q", string(k))
 					return nil
 				}
-				if c.Equal(ref) {
+				if c.Equal(*ref) {
 					fieldPtr.Chosen = foundVal
 				} else {
 					cnt, has := fieldPtr.Prescribed[foundVal]

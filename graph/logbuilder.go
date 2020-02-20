@@ -15,7 +15,6 @@ import (
 	"go.cryptoscope.co/margaret"
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/simple"
-	"gonum.org/v1/gonum/graph/traverse"
 
 	"go.cryptoscope.co/ssb"
 )
@@ -40,9 +39,12 @@ func NewLogBuilder(logger kitlog.Logger, contacts margaret.Log) (*logBuilder, er
 		current:     NewGraph(),
 	}
 
-	_, err := lb.Build()
+	ctx, cancel := context.WithCancel(context.Background())
+	go lb.startQuery(ctx)
+	lb.currentQueryCancel = cancel
 
-	return &lb, errors.Wrap(err, "failed to build graph")
+	time.Sleep(1 * time.Second)
+	return &lb, nil
 }
 
 func (b *logBuilder) startQuery(ctx context.Context) {
@@ -83,14 +85,6 @@ func (b *logBuilder) Authorizer(from *ssb.FeedRef, maxHops int) ssb.Authorizer {
 }
 
 func (b *logBuilder) Build() (*Graph, error) {
-	b.current.Lock()
-	defer b.current.Unlock()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go b.startQuery(ctx)
-	b.currentQueryCancel = cancel
-
-	time.Sleep(1 * time.Second)
 	return b.current, nil
 }
 
@@ -130,7 +124,6 @@ func (b *logBuilder) buildGraph(ctx context.Context, v interface{}, err error) e
 	bfrom := author.StoredAddr()
 	nFrom, has := b.current.lookup[bfrom]
 	if !has {
-
 		sr, err := ssb.NewStorageRef(author)
 		if err != nil {
 			return errors.Wrap(err, "failed to create graph node for author")
@@ -165,6 +158,7 @@ func (b *logBuilder) buildGraph(ctx context.Context, v interface{}, err error) e
 	}
 
 	edg := simple.WeightedEdge{F: nFrom, T: nTo, W: w}
+	// b.logger.Log("event", "add", "f", nFrom.ID(), "t", nTo.ID(), "w", w)
 	dg.SetWeightedEdge(contactEdge{
 		WeightedEdge: edg,
 		isBlock:      c.Blocking,
@@ -208,44 +202,77 @@ func (b *logBuilder) Hops(from *ssb.FeedRef, max int) *StrFeedSet {
 	}
 	b.current.Lock()
 	defer b.current.Unlock()
-	fb := from.StoredAddr()
-	nFrom, has := g.lookup[fb]
+
+	nFrom, has := g.lookup[from.StoredAddr()]
 	if !has {
+		panic("nope")
 		fs := NewFeedSet(1)
 		fs.AddRef(from)
 		return fs
 	}
-	// fmt.Println(from.Ref(), max)
-	w := traverse.BreadthFirst{
-		// only traverse friend edges
-		Traverse: func(e graph.Edge) bool {
-			ce := e.(contactEdge)
-			rev := g.Edge(ce.To().ID(), ce.From().ID())
-			if rev == nil {
-				return true
-			}
-			return ce.Weight() == 1 && rev.(contactEdge).Weight() == 1
-		},
+	max++
+	walked := NewFeedSet(10)
+	// tracks the nodes we already recursed from (so we don't do them multiple times on common friends)
+	visited := make(map[int64]struct{})
+
+	err = b.recurseHops(g, walked, visited, nFrom, max)
+	if err != nil {
+		b.logger.Log("event", "error", "msg", "recurse failed", "err", err)
+		panic(err)
+		return nil
 	}
-	fs := NewFeedSet(10)
-	w.Walk(g, nFrom, func(n graph.Node, d int) bool {
-		if d > max+1 {
-			return true
+
+	walked.Delete(from)
+	return walked
+}
+
+func (b *logBuilder) recurseHops(g *Graph, walked *StrFeedSet, vis map[int64]struct{}, nFrom graph.Node, depth int) error {
+	if depth == 0 {
+		// b.logger.Log("depth", depth)
+		return nil
+	}
+
+	nFromID := nFrom.ID()
+	nodes := g.From(nFromID)
+
+	_, visited := vis[nFromID]
+	// b.logger.Log("outEdges", nodes.Len(), "v", visited)
+	if visited {
+		return nil
+	}
+
+	for nodes.Next() {
+
+		cnv := nodes.Node().(*contactNode)
+		followsID := cnv.ID()
+
+		edg := g.Edge(nFromID, followsID)
+		if edg.(contactEdge).Weight() == 1 {
+			// b.logger.Log("f", "follow", "from", nFromID, "to", followsID)
+
+			fr, err := cnv.feed.FeedRef()
+			if err != nil {
+				return err
+			}
+
+			if err := walked.AddRef(fr); err != nil {
+				return err
+			}
+			// b.logger.Log("cnt", walked.Count())
+
+			backEdg := g.Edge(followsID, nFromID)
+			if backEdg != nil && backEdg.(contactEdge).Weight() == 1 {
+				// b.logger.Log("f", "back", "to", nFromID, "from", followsID)
+				if err := b.recurseHops(g, walked, vis, cnv, depth-1); err != nil {
+					return err
+				}
+			}
 		}
+	}
 
-		// if d >= len(got) {
-		// 	got = append(got, []int64(nil))
-		// }
-		// got[d] = append(got[d], n.ID())
+	vis[nFromID] = struct{}{}
 
-		cn := n.(*contactNode)
-		fs.AddStored(cn.feed)
-		return false
-	})
-
-	// goon.Dump(got)
-	// goon.Dump(final)
-	return fs
+	return nil
 }
 
 func (bld *logBuilder) State(a, b *ssb.FeedRef) int {

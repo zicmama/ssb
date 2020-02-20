@@ -3,9 +3,9 @@
 package message
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -139,31 +139,53 @@ func (ld streamDrain) Close() error { return ld.storage.Close() }
 // that he previous hash is correct and that the sequence number is increasing correctly
 // TODO: move all the message's publish and drains to it's own package
 func ValidateNext(current, next ssb.Message) error {
+	nextSeq := next.Seq()
 	if current != nil {
 		author := current.Author()
+		currSeq := current.Seq()
 
 		if !author.Equal(next.Author()) {
-			return errors.Errorf("ValidateNext(%s:%d): wrong author: %s", author.ShortRef(), current.Seq(), next.Author().ShortRef())
+			return ErrValidateNext{Author: author, Seq: currSeq,
+				Reason: errors.Errorf("wrong author")}
 		}
 
-		if bytes.Compare(current.Key().Hash, next.Previous().Hash) != 0 {
-			return errors.Errorf("ValidateNext(%s:%d): previous compare failed expected:%s incoming:%s",
-				author.Ref(),
-				current.Seq(),
-				current.Key().Ref(),
-				next.Previous().Ref(),
-			)
+		if !current.Key().Equal(*next.Previous()) {
+			return ErrValidateNext{Author: author, Seq: currSeq,
+				Reason: ErrValidateHashMismatch{Exp: current.Key(), Got: next.Previous()}}
+
 		}
-		if current.Seq()+1 != next.Seq() {
-			return errors.Errorf("ValidateNext(%s:%d): next.seq != curr.seq+1", author.ShortRef(), current.Seq())
+		if current.Seq()+1 != nextSeq {
+			return ErrValidateNext{Author: author, Seq: currSeq,
+				Reason: errors.Errorf("next.seq(%d) != curr.seq+1", nextSeq)}
 		}
 
 	} else { // first message
-		nextSeq := next.Seq()
 		if nextSeq != 1 {
-			return errors.Errorf("ValidateNext(%s:%d): first message has to have sequence 1", next.Author().ShortRef(), nextSeq)
+			return ErrValidateNext{Author: next.Author(), Seq: nextSeq,
+				Reason: errors.Errorf("first message has to have sequence 1")}
 		}
 	}
 
 	return nil
+}
+
+var errSkip = errors.New("ValidateNext: already got message")
+
+type ErrValidateNext struct {
+	Author *ssb.FeedRef
+	Seq    int64
+
+	Reason error
+}
+
+func (e ErrValidateNext) Error() string {
+	return fmt.Sprintf("ValidateNext(%s:%d): %s", e.Author.ShortRef(), e.Seq, e.Reason.Error())
+}
+
+type ErrValidateHashMismatch struct {
+	Exp, Got *ssb.MessageRef
+}
+
+func (e ErrValidateHashMismatch) Error() string {
+	return fmt.Sprintf("hash compare failed expected:%s incoming:%s", e.Exp.ShortRef(), e.Got.ShortRef())
 }

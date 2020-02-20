@@ -28,6 +28,12 @@ func getIDX(idx librarian.SeqSetterIndex) librarian.SinkIndex {
 	return librarian.NewSinkIndex(func(ctx context.Context, seq margaret.Seq, val interface{}, idx librarian.SetterIndex) error {
 		msg, ok := val.(ssb.Message)
 		if !ok {
+			if err, ok := val.(error); ok {
+				if margaret.IsErrNulled(err) {
+					return nil
+				}
+				return err
+			}
 			return errors.Errorf("index/get: unexpected message type: %T", val)
 		}
 		err := idx.Set(ctx, librarian.Addr(msg.Key().Hash), seq.Seq())

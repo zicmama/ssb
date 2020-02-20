@@ -353,7 +353,6 @@ func (b *builder) recurseHops(walked *StrFeedSet, vis map[string]struct{}, from 
 		return nil
 	}
 
-
 	fromFollows, err := b.Follows(from)
 	if err != nil {
 		return errors.Wrapf(err, "recurseHops(%d): from follow listing failed", depth)
@@ -381,7 +380,6 @@ func (b *builder) recurseHops(walked *StrFeedSet, vis map[string]struct{}, from 
 				return err
 			}
 		}
-		// b.log.Log("depth", depth, "from", from.ShortRef(), "follows", followedByFrom.ShortRef(), "friend", isF, "cnt", dstFollows.Count())
 	}
 
 	vis[from.Ref()] = struct{}{}

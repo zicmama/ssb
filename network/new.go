@@ -21,6 +21,7 @@ import (
 	"go.cryptoscope.co/secretstream/secrethandshake"
 
 	"go.cryptoscope.co/ssb"
+	"go.cryptoscope.co/ssb/internal/neterr"
 )
 
 // DefaultPort is the default listening port for ScuttleButt.
@@ -234,7 +235,6 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 	ok, ctx := n.connTracker.OnAccept(ctx, conn)
 	if !ok {
 		err := conn.Close()
-		// err := origConn.Close()
 		n.log.Log("conn", "ignored", "remote", conn.RemoteAddr(), "err", err)
 		return
 	}
@@ -271,12 +271,13 @@ func (n *node) handleConnection(ctx context.Context, origConn net.Conn, hws ...m
 	}
 	n.addRemote(edp)
 
-	defer edp.Terminate()
-	srv := edp.(muxrpc.Server)
-
-	if err := srv.Serve(ctx); err != nil {
-		// level.Debug(n.log).Log("conn", "serve", "err", err)
+	if err := edp.(muxrpc.Server).Serve(ctx); err != nil {
+		causeErr := errors.Cause(err)
+		if !neterr.IsConnBrokenErr(causeErr) && causeErr != context.Canceled {
+			level.Debug(n.log).Log("conn", "serve", "err", err)
+		}
 	}
+	edp.Terminate()
 	n.removeRemote(edp)
 }
 
