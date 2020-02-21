@@ -346,9 +346,9 @@ func main() {
 			blockedRef, err := sr.FeedRef()
 			checkAndLog(err)
 
-			blocks := tg.Blocks(botRef, *blockedRef)
+			blocks := tg.Blocks(botRef, blockedRef)
 			if !blocks {
-				dbState := sbot.GraphBuilder.State(botRef, *blockedRef)
+				dbState := sbot.GraphBuilder.State(botRef, blockedRef)
 				level.Warn(log).Log("event", "feed in block list that isn't blocked?", "ref", blockedRef.Ref(), "state", dbState)
 				continue
 			}
@@ -357,7 +357,7 @@ func main() {
 			checkAndLog(err)
 			if isStored {
 				level.Info(log).Log("event", "nulled feed", "ref", blockedRef.Ref())
-				err = sbot.NullFeed(*blockedRef)
+				err = sbot.NullFeed(blockedRef)
 				checkAndLog(err)
 			}
 		}

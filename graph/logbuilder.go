@@ -33,22 +33,45 @@ type logBuilder struct {
 // most likely terribly slow though. Additionally, we have to unmarshal from stored.Raw again...
 // TODO: actually compare the two with benchmarks if only to compare the 3rd!
 func NewLogBuilder(logger kitlog.Logger, contacts margaret.Log) (*logBuilder, error) {
-	lb := logBuilder{
+	b := logBuilder{
 		logger:      logger,
 		contactsLog: contacts,
 		current:     NewGraph(),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go lb.startQuery(ctx)
-	lb.currentQueryCancel = cancel
-
-	time.Sleep(1 * time.Second)
-	return &lb, nil
+	return &b, b.refreshGraph()
 }
 
-func (b *logBuilder) startQuery(ctx context.Context) {
-	src, err := b.contactsLog.Query(margaret.Live(true))
+func (b *logBuilder) Close() error {
+	b.currentQueryCancel()
+	return nil
+}
+
+func (b *logBuilder) refreshGraph() error {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	v, err := b.contactsLog.Seq().Value()
+	if err != nil {
+		return errors.Wrap(err, "failed to get current contacts count")
+	}
+	contactsSeq := v.(margaret.Seq)
+	limit := int(contactsSeq.Seq() + 1)
+	src, err := b.contactsLog.Query(margaret.Limit(limit), margaret.Live(false))
+	if err != nil {
+		return errors.Wrap(err, "failed to make live query for contacts")
+	}
+	err = luigi.Pump(ctx, luigi.FuncSink(b.buildGraph), src)
+	if err != nil {
+		return errors.Wrap(err, "graph build failed")
+	}
+
+	go b.makeLiveQuery(ctx, contactsSeq)
+	b.currentQueryCancel = cancel
+	return nil
+}
+
+func (b *logBuilder) makeLiveQuery(ctx context.Context, start margaret.Seq) {
+	src, err := b.contactsLog.Query(margaret.Gt(start), margaret.Live(true))
 	if err != nil {
 		err = errors.Wrap(err, "failed to make live query for contacts")
 		level.Error(b.logger).Log("err", err, "event", "query build failed")
@@ -61,18 +84,15 @@ func (b *logBuilder) startQuery(ctx context.Context) {
 }
 
 // DeleteAuthor just triggers a rebuild (and expects the author to have dissapeard from the message source)
+// TODO: could maybe inject a filter to do this here
 func (b *logBuilder) DeleteAuthor(who *ssb.FeedRef) error {
+	return errors.Errorf("TODO")
 	b.current.Lock()
 	defer b.current.Unlock()
 
 	b.currentQueryCancel()
 	b.current = nil
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go b.startQuery(ctx)
-	b.currentQueryCancel = cancel
-
-	return nil
+	return b.refreshGraph()
 }
 
 func (b *logBuilder) Authorizer(from *ssb.FeedRef, maxHops int) ssb.Authorizer {
@@ -85,6 +105,8 @@ func (b *logBuilder) Authorizer(from *ssb.FeedRef, maxHops int) ssb.Authorizer {
 }
 
 func (b *logBuilder) Build() (*Graph, error) {
+	// TODO: find a better way to wait for updates to complete
+	time.Sleep(time.Second / 16)
 	return b.current, nil
 }
 
@@ -205,7 +227,6 @@ func (b *logBuilder) Hops(from *ssb.FeedRef, max int) *StrFeedSet {
 
 	nFrom, has := g.lookup[from.StoredAddr()]
 	if !has {
-		panic("nope")
 		fs := NewFeedSet(1)
 		fs.AddRef(from)
 		return fs
@@ -218,7 +239,6 @@ func (b *logBuilder) Hops(from *ssb.FeedRef, max int) *StrFeedSet {
 	err = b.recurseHops(g, walked, visited, nFrom, max)
 	if err != nil {
 		b.logger.Log("event", "error", "msg", "recurse failed", "err", err)
-		panic(err)
 		return nil
 	}
 

@@ -15,8 +15,6 @@ import (
 	"go.cryptoscope.co/librarian"
 	libbadger "go.cryptoscope.co/librarian/badger"
 	"go.cryptoscope.co/margaret"
-	"gonum.org/v1/gonum/graph"
-	"gonum.org/v1/gonum/graph/path"
 	"gonum.org/v1/gonum/graph/simple"
 
 	"go.cryptoscope.co/ssb"
@@ -272,20 +270,6 @@ func (b *builder) Build() (*Graph, error) {
 
 	b.cachedGraph = dg
 	return dg, err
-}
-
-type Lookup struct {
-	dijk   path.Shortest
-	lookup key2node
-}
-
-func (l Lookup) Dist(to *ssb.FeedRef) ([]graph.Node, float64) {
-	bto := to.StoredAddr()
-	nTo, has := l.lookup[bto]
-	if !has {
-		return nil, math.Inf(-1)
-	}
-	return l.dijk.To(nTo.ID())
 }
 
 func (b *builder) Follows(forRef *ssb.FeedRef) (*StrFeedSet, error) {

@@ -165,10 +165,12 @@ func initSbot(s *Sbot) (*Sbot, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "sbot: failed to open message contact sublog")
 		}
-		s.GraphBuilder, err = graph.NewLogBuilder(s.info, mutil.Indirect(s.RootLog, contactLog))
+		lb, err := graph.NewLogBuilder(s.info, mutil.Indirect(s.RootLog, contactLog))
 		if err != nil {
 			return nil, errors.Wrap(err, "sbot: NewLogBuilder failed")
 		}
+		s.closers.addCloser(lb)
+		s.GraphBuilder = lb
 	} else {
 		gb, serveContacts, err := indexes.OpenContacts(kitlog.With(log, "module", "graph"), r)
 		if err != nil {

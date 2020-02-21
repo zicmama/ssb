@@ -16,16 +16,27 @@ import (
 type key2node map[librarian.Addr]graph.Node
 
 type Graph struct {
-	sync.Mutex
+	*sync.Mutex
 	*simple.WeightedDirectedGraph
 	lookup key2node
 }
 
 func NewGraph() *Graph {
 	return &Graph{
+		Mutex:                 &sync.Mutex{},
 		WeightedDirectedGraph: simple.NewWeightedDirectedGraph(0, math.Inf(1)),
 		lookup:                make(key2node),
 	}
+}
+
+func (g *Graph) getNode(addr librarian.Addr) (graph.Node, bool) {
+	g.Mutex.Lock()
+	defer g.Mutex.Unlock()
+	nFrom, has := g.lookup[addr]
+	if !has {
+		return nil, false
+	}
+	return nFrom, true
 }
 
 func (g *Graph) getEdge(from, to *ssb.FeedRef) (graph.WeightedEdge, bool) {
@@ -92,6 +103,20 @@ func (g *Graph) MakeDijkstra(from *ssb.FeedRef) (*Lookup, error) {
 	}
 	return &Lookup{
 		path.DijkstraFrom(nFrom, g),
-		g.lookup,
+		g.getNode,
 	}, nil
+}
+
+type Lookup struct {
+	dijk   path.Shortest
+	lookup func(librarian.Addr) (graph.Node, bool)
+}
+
+func (l Lookup) Dist(to *ssb.FeedRef) ([]graph.Node, float64) {
+
+	nTo, has := l.lookup(to.StoredAddr())
+	if !has {
+		return nil, math.Inf(-1)
+	}
+	return l.dijk.To(nTo.ID())
 }

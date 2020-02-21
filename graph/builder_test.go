@@ -123,8 +123,7 @@ func makeTypedLog(t *testing.T) testStore {
 	return tc
 }
 
-// TODO: logbuilder needs more love
-func XTestTypedLog(t *testing.T) {
+func TestTypedLog(t *testing.T) {
 	tc := makeTypedLog(t)
 	t.Run("scene1", tc.theScenario)
 	tc.close()
