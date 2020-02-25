@@ -11,15 +11,12 @@ import (
 
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
-	"go.cryptoscope.co/librarian"
 	"go.cryptoscope.co/muxrpc"
 
 	"go.cryptoscope.co/ssb"
 	"go.cryptoscope.co/ssb/blobstore"
-	"go.cryptoscope.co/ssb/graph"
 	"go.cryptoscope.co/ssb/indexes"
 	"go.cryptoscope.co/ssb/internal/ctxutils"
-	"go.cryptoscope.co/ssb/internal/mutil"
 	"go.cryptoscope.co/ssb/message"
 	"go.cryptoscope.co/ssb/multilogs"
 	"go.cryptoscope.co/ssb/network"
@@ -152,25 +149,12 @@ func initSbot(s *Sbot) (*Sbot, error) {
 		return nil, errors.Wrap(err, "sbot: failed to create publish log")
 	}
 
-	// LogBuilder doesn't fully work yet
-	if mt, ok := s.mlogIndicies["msgTypes"]; ok {
-		level.Warn(s.info).Log("event", "bot init", "msg", "using experimental bytype:contact graph implementation")
-		contactLog, err := mt.Get(librarian.Addr("contact"))
-		if err != nil {
-			return nil, errors.Wrap(err, "sbot: failed to open message contact sublog")
-		}
-		s.GraphBuilder, err = graph.NewLogBuilder(s.info, mutil.Indirect(s.RootLog, contactLog))
-		if err != nil {
-			return nil, errors.Wrap(err, "sbot: NewLogBuilder failed")
-		}
-	} else {
-		gb, serveContacts, err := indexes.OpenContacts(kitlog.With(log, "module", "graph"), r)
-		if err != nil {
-			return nil, errors.Wrap(err, "sbot: OpenContacts failed")
-		}
-		s.serveIndex(ctx, "contacts", serveContacts)
-		s.GraphBuilder = gb
+	gb, serveContacts, err := indexes.OpenContacts(kitlog.With(log, "module", "graph"), r)
+	if err != nil {
+		return nil, errors.Wrap(err, "sbot: OpenContacts failed")
 	}
+	s.serveIndex(ctx, "contacts", serveContacts)
+	s.GraphBuilder = gb
 
 	if s.disableNetwork {
 		return s, nil
