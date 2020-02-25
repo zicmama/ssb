@@ -68,9 +68,13 @@ func (g rxLogHandler) HandleCall(ctx context.Context, req *muxrpc.Request, edp m
 
 	if qry.Live {
 		qry.Limit = -1
+	} else {
+		if qry.Limit == 0 {
+			qry.Limit = -1
+		}
 	}
 
-	// // only return message keys
+	// TODO: only return message keys
 	// qry.Values = true
 
 	src, err := g.root.Query(
